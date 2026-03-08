@@ -985,6 +985,113 @@ export const CHARACTER_LIBRARY = [
     },
   }),
   defineCharacter({
+    id: "prism-refract",
+    name: "光棱",
+    title: "折射者",
+    color: "#e8f0ff",
+    description: "每3秒蓄力后发射一道随机方向的红色激光，可反射3次，命中造成6点伤害并使敌人僵直0.2秒。大招停止移动，同时射出3道持续3秒的粗壮激光，每道各命中一次敌人造成10点伤害。",
+    visual: { motif: "prism" },
+    stats: {
+      maxHp: 85,
+      speed: 178,
+      maxEssence: 3,
+      attackRange: 300,
+      radius: 17,
+    },
+    tuning: {
+      basic: {
+        chargeDuration: 0.5,
+        damage: 6,
+        maxBounces: 3,
+        stunDuration: 0.2,
+        lifetime: 0.45,
+      },
+      ultimate: {
+        damage: 10,
+        maxBounces: 5,
+        duration: 3,
+        laserCount: 3,
+        stunDuration: 0.2,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "平A",
+        fields: [
+          editableField("basicAttack.triggers.0.interval", "发射间隔", { min: 0.5, step: 0.1, unit: "s" }),
+          editableField("tuning.basic.chargeDuration", "蓄力时间", { min: 0.1, step: 0.05, unit: "s" }),
+          editableField("tuning.basic.damage", "激光伤害", { min: 1, step: 1 }),
+          editableField("tuning.basic.maxBounces", "反射次数", { min: 0, step: 1 }),
+          editableField("tuning.basic.lifetime", "光束持续", { min: 0.1, step: 0.05, unit: "s" }),
+        ],
+      },
+      {
+        title: "大招",
+        fields: [
+          editableField("tuning.ultimate.damage", "激光伤害", { min: 1, step: 1 }),
+          editableField("tuning.ultimate.maxBounces", "反射次数", { min: 0, step: 1 }),
+          editableField("tuning.ultimate.duration", "持续时间", { min: 0.5, step: 0.5, unit: "s" }),
+          editableField("tuning.ultimate.laserCount", "激光数量", { min: 1, step: 1 }),
+        ],
+      },
+    ],
+    basicAttack: {
+      name: "高能射线",
+      triggers: [{ type: "interval", interval: 3 }],
+      execute({ actor, api }) {
+        const tuning = actor.definition.tuning.basic;
+        api.lockMovement(tuning.chargeDuration);
+        api.emitText("蓄力", actor.position, "#ff9999");
+        api.schedule(tuning.chargeDuration, ({ actor: a, api: sApi }) => {
+          if (!a.alive) return;
+          const angle = Math.random() * Math.PI * 2;
+          sApi.spawnLaser({
+            direction: { x: Math.cos(angle), y: Math.sin(angle) },
+            maxBounces: tuning.maxBounces,
+            damage: tuning.damage,
+            stunDuration: tuning.stunDuration,
+            color: "#ff4444",
+            width: 3,
+            lifetime: tuning.lifetime,
+            persistent: false,
+          });
+          sApi.shake(6, 0.1);
+        });
+      },
+    },
+    ultimate: {
+      name: "死光扫射",
+      execute({ actor, api }) {
+        const tuning = actor.definition.tuning.ultimate;
+        api.lockMovement(tuning.duration);
+        api.emitText("死光", actor.position, "#ff6644");
+        api.shake(16, 0.28);
+        const phaseOffset = Math.random() * Math.PI * 2;
+        for (let i = 0; i < tuning.laserCount; i += 1) {
+          const angle = phaseOffset + (Math.PI * 2 * i) / tuning.laserCount;
+          api.spawnLaser({
+            direction: { x: Math.cos(angle), y: Math.sin(angle) },
+            maxBounces: tuning.maxBounces,
+            damage: tuning.damage,
+            stunDuration: tuning.stunDuration,
+            color: "#ff6600",
+            width: 7,
+            lifetime: tuning.duration,
+            persistent: true,
+          });
+        }
+      },
+    },
+  }),
+  defineCharacter({
     id: "holy-shield",
     name: "圣盾",
     title: "防守反击",
@@ -1005,6 +1112,7 @@ export const CHARACTER_LIBRARY = [
       },
       ultimate: {
         swordDamage: 8,
+        swordStep: 20,
       },
     },
     editorSections: [
@@ -1028,6 +1136,7 @@ export const CHARACTER_LIBRARY = [
         title: "大招",
         fields: [
           editableField("tuning.ultimate.swordDamage", "圣剑伤害", { min: 1, step: 1 }),
+          editableField("tuning.ultimate.swordStep", "每次增加长度", { min: 1, step: 1 }),
         ],
       },
     ],
@@ -1058,12 +1167,13 @@ export const CHARACTER_LIBRARY = [
     ultimate: {
       name: "绝对领域",
       execute({ actor, api }) {
+        const step = actor.definition.tuning.ultimate.swordStep;
         if (actor.state.swordLength <= 0) {
-          actor.state.swordLength = actor.baseRadius;
+          actor.state.swordLength = actor.baseRadius + step;
           api.emitText("圣剑", actor.position, "#f5d070");
         } else {
-          actor.state.swordLength += actor.baseRadius;
-          api.emitText(`剑+${actor.baseRadius}`, actor.position, "#fff2b0");
+          actor.state.swordLength += step;
+          api.emitText(`剑+${step}`, actor.position, "#fff2b0");
         }
         api.shake(12, 0.2);
       },

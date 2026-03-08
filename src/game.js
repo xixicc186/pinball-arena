@@ -252,6 +252,7 @@ export class ArenaGame {
       strikes: [],
       beams: [],
       decoys: [],
+      lasers: [],
       scheduledActions: [],
       shake: { amplitude: 0, duration: 0, timeLeft: 0 },
       nextEssenceIn: 1.5,
@@ -441,6 +442,7 @@ export class ArenaGame {
     this.updateScheduledActions(dt);
     this.updateActors(dt);
     this.updateHolySwords(dt);
+    this.updateLasers(dt);
     this.resolveActorCollisions();
     this.updateTrails(dt);
     this.updateTurrets(dt);
@@ -731,6 +733,7 @@ export class ArenaGame {
       createDrainBeam: (config) => this.spawnBeam(actor, config),
       spawnDecoy: (config) => this.spawnDecoy(actor, config),
       activateDecoys: (config) => this.activateDecoys(actor, config),
+      spawnLaser: (config) => this.spawnLaser(actor, config),
       applyFrost: (target, options) => this.applyFrostStack(actor, target, options),
       forceFreezeTarget: (target, duration) => {
         if (!target.alive) return;
@@ -1743,6 +1746,7 @@ export class ArenaGame {
     this.renderProjectiles(ctx, state);
     this.renderPulses(ctx, state);
     this.renderBeams(ctx, state);
+    this.renderLasers(ctx, state);
     this.renderActors(ctx, state);
     this.renderParticles(ctx, state);
     this.renderDamageTexts(ctx, state);
@@ -2193,22 +2197,23 @@ export class ArenaGame {
       }
 
       if (actor.characterId === "holy-shield" && (actor.state.shieldCharges ?? 0) > 0 && actor.state.invulnerableTime <= 0) {
-        for (let ci = 0; ci < actor.state.shieldCharges; ci += 1) {
-          const ca = -Math.PI / 2 + ((Math.PI * 2) / 3) * ci;
-          ctx.fillStyle = "#f5d070";
-          ctx.shadowBlur = 6;
-          ctx.shadowColor = "#f5d070";
-          ctx.beginPath();
-          ctx.arc(
-            actor.position.x + Math.cos(ca) * (actor.radius + 10),
-            actor.position.y + Math.sin(ca) * (actor.radius + 10),
-            3.5,
-            0,
-            Math.PI * 2,
-          );
-          ctx.fill();
-          ctx.shadowBlur = 0;
-        }
+        const charges = actor.state.shieldCharges;
+        ctx.save();
+        ctx.strokeStyle = "#f5d070";
+        ctx.lineWidth = 3.5;
+        ctx.lineCap = "round";
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = "#f5d070";
+        ctx.beginPath();
+        ctx.arc(
+          actor.position.x,
+          actor.position.y,
+          actor.radius + 9,
+          -Math.PI / 2,
+          -Math.PI / 2 + charges * ((Math.PI * 2) / 3),
+        );
+        ctx.stroke();
+        ctx.restore();
       }
 
       ctx.save();
@@ -2288,6 +2293,9 @@ export class ArenaGame {
         break;
       case "holy-shield":
         this.renderHolyShieldBall(ctx, actor, elapsed);
+        break;
+      case "prism-refract":
+        this.renderPrismBall(ctx, actor, elapsed);
         break;
       default:
         ctx.fillStyle = actor.color;
@@ -3043,6 +3051,298 @@ export class ArenaGame {
     ctx.fill();
   }
 
+  // ── 激光系统 (光棱) ──────────────────────────────────────────────────────
+
+  raySegmentIntersect(origin, dir, a, b) {
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const denom = dir.x * aby - dir.y * abx;
+    if (Math.abs(denom) < 0.0001) return null;
+    const aox = a.x - origin.x;
+    const aoy = a.y - origin.y;
+    const t = (aox * aby - aoy * abx) / denom;
+    const s = (aox * dir.y - aoy * dir.x) / denom;
+    if (t < 0 || s < 0 || s > 1) return null;
+    return { t, point: { x: origin.x + dir.x * t, y: origin.y + dir.y * t } };
+  }
+
+  findNearestWallHit(origin, dir) {
+    let nearest = null;
+    let nearestT = Infinity;
+
+    const points = this.state.arena.points;
+    for (let i = 0; i < points.length; i += 1) {
+      const a = points[i];
+      const b = points[(i + 1) % points.length];
+      const hit = this.raySegmentIntersect(origin, dir, a, b);
+      if (hit && hit.t > 0.5 && hit.t < nearestT) {
+        const edge = subtract(b, a);
+        let normal = normalize({ x: -edge.y, y: edge.x });
+        if (dot(normal, dir) > 0) normal = scale(normal, -1);
+        nearest = { t: hit.t, point: hit.point, normal };
+        nearestT = hit.t;
+      }
+    }
+
+    for (const wall of this.state.arena.walls) {
+      const abx = wall.b.x - wall.a.x;
+      const aby = wall.b.y - wall.a.y;
+      const len = Math.hypot(abx, aby);
+      if (len < 0.001) continue;
+      const perp = { x: -aby / len, y: abx / len };
+      const half = wall.thickness / 2;
+      const edges = [
+        [add(wall.a, scale(perp, half)), add(wall.b, scale(perp, half))],
+        [add(wall.a, scale(perp, -half)), add(wall.b, scale(perp, -half))],
+      ];
+      for (const [ea, eb] of edges) {
+        const hit = this.raySegmentIntersect(origin, dir, ea, eb);
+        if (hit && hit.t > 0.5 && hit.t < nearestT) {
+          const edge = subtract(eb, ea);
+          let normal = normalize({ x: -edge.y, y: edge.x });
+          if (dot(normal, dir) > 0) normal = scale(normal, -1);
+          nearest = { t: hit.t, point: hit.point, normal };
+          nearestT = hit.t;
+        }
+      }
+    }
+
+    return nearest;
+  }
+
+  castLaserSegments(origin, direction, maxBounces) {
+    const segments = [];
+    let current = { ...origin };
+    let dir = normalize(direction);
+
+    for (let bounce = 0; bounce <= maxBounces; bounce += 1) {
+      const hit = this.findNearestWallHit(current, dir);
+      if (!hit) break;
+      segments.push({ start: { ...current }, end: { ...hit.point } });
+      if (bounce >= maxBounces) break;
+      dir = reflect(dir, hit.normal);
+      current = { x: hit.point.x + dir.x * 0.5, y: hit.point.y + dir.y * 0.5 };
+    }
+
+    return segments;
+  }
+
+  spawnLaser(actor, config) {
+    const segments = this.castLaserSegments(
+      actor.position,
+      config.direction,
+      config.maxBounces ?? 3,
+    );
+    const laser = {
+      id: Math.random().toString(16).slice(2),
+      ownerId: actor.id,
+      segments,
+      color: config.color ?? "#ff4444",
+      width: config.width ?? 3,
+      damage: config.damage ?? 6,
+      stunDuration: config.stunDuration ?? 0.2,
+      lifetime: config.lifetime ?? 0.4,
+      maxLifetime: config.lifetime ?? 0.4,
+      hitEnemies: new Set(),
+      persistent: config.persistent ?? false,
+    };
+    this.state.lasers.push(laser);
+    this.applyLaserDamage(actor, laser);
+    return laser;
+  }
+
+  applyLaserDamage(actor, laser) {
+    const LASER_HALF = laser.width / 2 + 2;
+    for (const enemy of this.state.actors) {
+      if (!enemy.alive || enemy.id === actor.id) continue;
+      if (laser.hitEnemies.has(enemy.id)) continue;
+      for (const seg of laser.segments) {
+        const dist = distanceToSegment(enemy.position, seg.start, seg.end);
+        if (dist < enemy.radius + LASER_HALF) {
+          laser.hitEnemies.add(enemy.id);
+          this.applyDamage(enemy, laser.damage, { attacker: actor, color: laser.color });
+          if (laser.stunDuration > 0 && enemy.alive) {
+            this.lockActorMovement(enemy, laser.stunDuration);
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  updateLasers(dt) {
+    this.state.lasers = this.state.lasers.filter((laser) => {
+      laser.lifetime -= dt;
+      if (laser.lifetime <= 0) return false;
+      if (laser.persistent) {
+        const actor = this.findActorById(laser.ownerId);
+        if (actor?.alive) {
+          this.applyLaserDamage(actor, laser);
+        }
+      }
+      return true;
+    });
+  }
+
+  renderLasers(ctx, state) {
+    for (const laser of state.lasers) {
+      const alpha = clamp(laser.lifetime / laser.maxLifetime, 0, 1);
+      ctx.save();
+      ctx.lineCap = "round";
+
+      // 外层光晕
+      ctx.globalAlpha = alpha * 0.55;
+      ctx.shadowBlur = laser.width * 5;
+      ctx.shadowColor = laser.color;
+      ctx.strokeStyle = laser.color;
+      ctx.lineWidth = laser.width * 2.2;
+      for (const seg of laser.segments) {
+        ctx.beginPath();
+        ctx.moveTo(seg.start.x, seg.start.y);
+        ctx.lineTo(seg.end.x, seg.end.y);
+        ctx.stroke();
+      }
+
+      // 主光束
+      ctx.globalAlpha = alpha * 0.92;
+      ctx.shadowBlur = laser.width * 3;
+      ctx.strokeStyle = laser.color;
+      ctx.lineWidth = laser.width;
+      for (const seg of laser.segments) {
+        ctx.beginPath();
+        ctx.moveTo(seg.start.x, seg.start.y);
+        ctx.lineTo(seg.end.x, seg.end.y);
+        ctx.stroke();
+      }
+
+      // 白色核心
+      ctx.globalAlpha = alpha * 0.75;
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+      ctx.lineWidth = laser.width * 0.35;
+      for (const seg of laser.segments) {
+        ctx.beginPath();
+        ctx.moveTo(seg.start.x, seg.start.y);
+        ctx.lineTo(seg.end.x, seg.end.y);
+        ctx.stroke();
+      }
+
+      // 反射节点
+      ctx.globalAlpha = alpha * 0.9;
+      ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = laser.color;
+      for (let i = 1; i < laser.segments.length; i += 1) {
+        const pt = laser.segments[i].start;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, laser.width * 0.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+  }
+
+  renderPrismBall(ctx, actor, elapsed) {
+    const radius = actor.radius;
+    const charging = actor.state.movementLock > 0;
+    const spin = elapsed * 0.65;
+
+    // 主体：纯白到珍珠灰
+    const shell = ctx.createRadialGradient(-radius * 0.18, -radius * 0.22, 1, 0, 0, radius);
+    shell.addColorStop(0, "#ffffff");
+    shell.addColorStop(0.22, charging ? "#ffffff" : "#f2f4ff");
+    shell.addColorStop(0.55, "#c8d0e8");
+    shell.addColorStop(0.82, "#7880a0");
+    shell.addColorStop(1, "#1a1c28");
+    ctx.fillStyle = shell;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 宝石刻面：6条辐射线 + 两圈六边形
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.rotate(spin);
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.65)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 6; i += 1) {
+      const a = (Math.PI * 2 * i) / 6;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * radius, Math.sin(a) * radius);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = "rgba(200, 210, 240, 0.6)";
+    for (const r of [radius * 0.44, radius * 0.78]) {
+      ctx.beginPath();
+      for (let i = 0; i <= 6; i += 1) {
+        const a = (Math.PI * 2 * i) / 6;
+        if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+        else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 折射彩虹弧：内圈旋转彩色光谱（模拟棱镜色散）
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.clip();
+    const rainbowColors = ["#ff4444", "#ff9900", "#ffee00", "#44ff88", "#4499ff", "#cc44ff"];
+    rainbowColors.forEach((color, i) => {
+      const a0 = spin * 0.5 + (Math.PI * 2 * i) / rainbowColors.length;
+      const a1 = spin * 0.5 + (Math.PI * 2 * (i + 0.72)) / rainbowColors.length;
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = charging ? 0.42 : 0.18;
+      ctx.lineWidth = radius * 0.18;
+      ctx.lineCap = "butt";
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * 0.66, a0, a1);
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // 蓄力：中心白光爆发，切面全亮
+    if (charging) {
+      const pulse = (Math.sin(elapsed * 22) + 1) * 0.5;
+      const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, radius * 0.85);
+      glow.addColorStop(0, `rgba(255, 255, 255, ${0.7 + pulse * 0.3})`);
+      glow.addColorStop(0.45, `rgba(230, 235, 255, ${0.3 + pulse * 0.2})`);
+      glow.addColorStop(1, "rgba(200, 210, 255, 0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 旋转闪光点：模拟宝石棱角反光
+    ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
+    for (let i = 0; i < 3; i += 1) {
+      const ga = spin * 1.5 + (Math.PI * 2 * i) / 3;
+      const gr = radius * 0.74;
+      const gs = 1.6 + Math.sin(elapsed * 4.2 + i * 2.1) * 0.7;
+      ctx.beginPath();
+      ctx.arc(Math.cos(ga) * gr, Math.sin(ga) * gr, gs, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // 主高光：椭圆镜面反光
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    ctx.beginPath();
+    ctx.ellipse(-radius * 0.25, -radius * 0.3, radius * 0.22, radius * 0.1, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(255,255,255,0.3)";
+    ctx.beginPath();
+    ctx.arc(radius * 0.2, radius * 0.25, radius * 0.09, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // ── 圣盾系统 ────────────────────────────────────────────────────────────
 
   updateHolySwords(dt) {
@@ -3067,6 +3367,10 @@ export class ArenaGame {
       }
 
       const angle = actor.state.swordOrbitAngle;
+      const swordBase = {
+        x: actor.position.x + Math.cos(angle) * actor.radius,
+        y: actor.position.y + Math.sin(angle) * actor.radius,
+      };
       const tip = {
         x: actor.position.x + Math.cos(angle) * actor.state.swordLength,
         y: actor.position.y + Math.sin(angle) * actor.state.swordLength,
@@ -3076,7 +3380,7 @@ export class ArenaGame {
       for (const enemy of this.state.actors) {
         if (!enemy.alive || enemy.id === actor.id) continue;
         if ((actor.state.swordDamageCooldowns.get(enemy.id) ?? 0) > 0) continue;
-        const dist = distanceToSegment(enemy.position, actor.position, tip);
+        const dist = distanceToSegment(enemy.position, swordBase, tip);
         if (dist < enemy.radius + SWORD_HIT_THICKNESS) {
           this.applyDamage(enemy, swordDamage, { attacker: actor, color: "#f5d070" });
           actor.state.swordDamageCooldowns.set(enemy.id, 0.45);
@@ -3091,8 +3395,8 @@ export class ArenaGame {
     const swordLength = actor.state.swordLength;
     const ox = actor.position.x;
     const oy = actor.position.y;
-    const baseX = ox + Math.cos(angle) * actor.radius * 1.15;
-    const baseY = oy + Math.sin(angle) * actor.radius * 1.15;
+    const baseX = ox + Math.cos(angle) * actor.radius;
+    const baseY = oy + Math.sin(angle) * actor.radius;
     const tipX = ox + Math.cos(angle) * swordLength;
     const tipY = oy + Math.sin(angle) * swordLength;
     const perpX = -Math.sin(angle);

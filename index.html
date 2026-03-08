@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>弹球角斗场</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <main class="app-shell">
+        <section class="arena-panel">
+          <canvas
+            id="arena-canvas"
+            width="2560"
+            height="1440"
+            aria-label="弹球角斗场画布"
+          ></canvas>
+
+          <div class="arena-top-left">
+            <section class="battle-feed-panel" aria-label="战斗播报">
+              <div class="panel-head battle-feed-head">
+                <h2>战斗播报</h2>
+              </div>
+              <div id="feed" class="feed"></div>
+            </section>
+
+            <section class="panel arena-status-panel" aria-label="战斗计时">
+              <div class="arena-status-grid">
+                <div class="hud-block">
+                  <span class="hud-label">计时</span>
+                  <strong id="hud-timer">0.0s</strong>
+                </div>
+                <div class="hud-block">
+                  <span class="hud-label">阶段</span>
+                  <strong id="hud-phase">选择角色后开始</strong>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel battle-score-panel" aria-label="存活列表">
+            <div class="panel-head battle-score-head">
+              <h2>存活列表</h2>
+            </div>
+            <div id="scoreboard" class="scoreboard"></div>
+          </section>
+
+          <div id="overlay" class="overlay hidden"></div>
+        </section>
+
+        <section class="panel toolbar-panel">
+          <div class="toolbar-row">
+            <button id="record-button" class="secondary-button" type="button">录制对局</button>
+            <button id="start-button" class="primary-button">开始游戏</button>
+
+            <label class="toolbar-toggle">
+              <input id="edge-spikes-toggle" type="checkbox" checked />
+              <span>随机一侧生成边缘尖刺</span>
+            </label>
+
+            <label class="toolbar-setting">
+              <span class="setting-label">进入下一阶段时间</span>
+              <span class="setting-control">
+                <input id="duel-time-input" type="number" min="5" step="1" value="45" />
+                <span class="setting-unit">秒</span>
+              </span>
+            </label>
+
+            <button id="open-roster-button" class="secondary-button" type="button">角色选择与编辑</button>
+          </div>
+
+          <div class="toolbar-meta">
+            <span id="roster-status" class="roster-status">已选择 5 名参战角色</span>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="roster-modal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-close-modal="true"></div>
+      <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Roster</p>
+            <h2 id="modal-title">角色选择与编辑</h2>
+            <p id="modal-roster-status" class="modal-note">已选择 5 名参战角色</p>
+          </div>
+
+          <div class="modal-actions">
+            <button id="select-all-button" class="secondary-button" type="button">全选</button>
+            <button id="clear-roster-button" class="secondary-button" type="button">清空其他</button>
+            <button id="reset-button" class="secondary-button" type="button">重置当前角色</button>
+            <button id="close-roster-button" class="secondary-button" type="button">关闭</button>
+          </div>
+        </div>
+
+        <div class="modal-body">
+          <section class="modal-column modal-roster-column">
+            <div id="roster" class="roster"></div>
+          </section>
+
+          <section class="modal-column modal-editor-column">
+            <div id="character-editor" class="editor-panel"></div>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,1214 @@
+function deepClone(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => deepClone(entry));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, deepClone(entry)]),
+    );
+  }
+  return value;
+}
+
+function getByPath(target, path) {
+  return path.split(".").reduce((value, key) => value?.[key], target);
+}
+
+function setByPath(target, path, nextValue) {
+  const keys = path.split(".");
+  const lastKey = keys.pop();
+  const parent = keys.reduce((value, key) => value?.[key], target);
+  if (!parent || lastKey == null) {
+    return false;
+  }
+  parent[lastKey] = nextValue;
+  return true;
+}
+
+function editableField(path, label, options = {}) {
+  return {
+    path,
+    label,
+    min: options.min ?? 0,
+    max: options.max,
+    step: options.step ?? 1,
+    unit: options.unit ?? "",
+  };
+}
+
+export function defineCharacter(config) {
+  const requiredStats = ["maxHp", "speed", "maxEssence", "attackRange"];
+  for (const key of requiredStats) {
+    if (typeof config?.stats?.[key] !== "number") {
+      throw new Error(`角色 ${config?.id ?? "unknown"} 缺少数值属性 ${key}`);
+    }
+  }
+  return {
+    radius: 18,
+    visual: {
+      motif: "default",
+    },
+    editorSections: [],
+    tuning: {},
+    basicAttack: {
+      name: "基础攻击",
+      triggers: [{ type: "interval", interval: 1 }],
+      execute() {},
+    },
+    ultimate: {
+      name: "终极技能",
+      execute() {},
+    },
+    onSpawn() {},
+    onKill() {},
+    onDeath() {},
+    ...config,
+    stats: {
+      radius: config?.stats?.radius ?? config.radius ?? 18,
+      ...config.stats,
+    },
+    tuning: deepClone(config.tuning ?? {}),
+    editorSections: deepClone(config.editorSections ?? []),
+  };
+}
+
+export function instantiateCharacter(character) {
+  return {
+    ...character,
+    stats: deepClone(character.stats),
+    tuning: deepClone(character.tuning ?? {}),
+    visual: deepClone(character.visual ?? {}),
+    editorSections: deepClone(character.editorSections ?? []),
+    basicAttack: {
+      ...character.basicAttack,
+      triggers: deepClone(character.basicAttack?.triggers ?? []),
+    },
+    ultimate: {
+      ...character.ultimate,
+    },
+  };
+}
+
+export function summarizeTriggers(character) {
+  return (character.basicAttack?.triggers ?? []).map((trigger) => {
+    switch (trigger.type) {
+      case "interval":
+        return `时间轴 ${trigger.interval}s`;
+      case "proximity":
+        return `范围 ${trigger.radius ?? character.stats.attackRange}`;
+      case "trail":
+        return `轨迹 ${trigger.interval}s`;
+      case "onWallBounce":
+        return "撞墙触发";
+      case "collision":
+        return "碰撞切割";
+      default:
+        return trigger.type;
+    }
+  });
+}
+
+function radialBurst(api, actor, count, options = {}) {
+  const total = options.count ?? count;
+  const phaseOffset = options.phaseOffset ?? 0;
+  for (let index = 0; index < total; index += 1) {
+    const angle = phaseOffset + (Math.PI * 2 * index) / total;
+    api.spawnProjectile({
+      position: options.position ?? actor.position,
+      direction: { x: Math.cos(angle), y: Math.sin(angle) },
+      speed: options.speed ?? 280,
+      radius: options.radius ?? 6,
+      damage: options.damage ?? 10,
+      color: options.color ?? actor.color,
+      lifetime: options.lifetime ?? 2.2,
+      bounces: options.bounces ?? 1,
+      knockback: options.knockback ?? 140,
+      shape: options.shape,
+      length: options.length,
+      pierce: options.pierce,
+    });
+  }
+}
+
+function scheduleBurstRain(api, options = {}) {
+  const startDelay = options.startDelay ?? 0;
+  const waves = options.waves ?? 10;
+  const duration = options.duration ?? 2;
+  const shots = options.shots ?? 12;
+
+  for (let wave = 0; wave < waves; wave += 1) {
+    const offset = waves <= 1 ? 0 : (duration / (waves - 1)) * wave;
+    api.schedule(startDelay + offset, ({ actor, api: scheduledApi }) => {
+      if (!actor.alive) {
+        return;
+      }
+      radialBurst(scheduledApi, actor, shots, {
+        ...options,
+        phaseOffset: (wave % 2) * ((Math.PI * 2) / shots / 2),
+      });
+      scheduledApi.shake(5, 0.08);
+    });
+  }
+}
+
+export const CHARACTER_LIBRARY = [
+  defineCharacter({
+    id: "bee-stinger",
+    name: "蜂刺",
+    title: "极限速射",
+    color: "#ffc94d",
+    description: "超轻血量换来最强单体点杀，光针频率高、弹体细、压制力极强。",
+    visual: {
+      motif: "bee",
+    },
+    stats: {
+      maxHp: 70,
+      speed: 204,
+      maxEssence: 3,
+      attackRange: 320,
+      radius: 16,
+    },
+    tuning: {
+      basic: {
+        speed: 520,
+        radius: 2.6,
+        damage: 2,
+        lifetime: 1.1,
+        knockback: 28,
+        length: 16,
+      },
+      ultimate: {
+        lockDuration: 0.5,
+        startDelay: 0.5,
+        duration: 2,
+        waves: 12,
+        shots: 16,
+        speed: 360,
+        radius: 2.4,
+        damage: 2,
+        lifetime: 1.5,
+        knockback: 48,
+        length: 13,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+          editableField("stats.attackRange", "索敌范围", { min: 40, step: 1 }),
+        ],
+      },
+      {
+        title: "平A",
+        fields: [
+          editableField("basicAttack.triggers.0.interval", "发射间隔", { min: 0.05, step: 0.01, unit: "s" }),
+          editableField("tuning.basic.damage", "光针伤害", { min: 1, step: 1 }),
+          editableField("tuning.basic.speed", "光针速度", { min: 60, step: 5 }),
+          editableField("tuning.basic.lifetime", "光针持续", { min: 0.1, step: 0.05, unit: "s" }),
+        ],
+      },
+      {
+        title: "大招",
+        fields: [
+          editableField("tuning.ultimate.startDelay", "蓄力时间", { min: 0, step: 0.05, unit: "s" }),
+          editableField("tuning.ultimate.duration", "持续时间", { min: 0.2, step: 0.1, unit: "s" }),
+          editableField("tuning.ultimate.waves", "发射波数", { min: 1, step: 1 }),
+          editableField("tuning.ultimate.shots", "每波针数", { min: 1, step: 1 }),
+          editableField("tuning.ultimate.damage", "单针伤害", { min: 1, step: 1 }),
+        ],
+      },
+    ],
+    basicAttack: {
+      name: "追踪光针",
+      triggers: [{ type: "interval", interval: 0.33 }],
+      execute({ actor, api }) {
+        const target = api.findNearestEnemy(actor.stats.attackRange);
+        if (!target) {
+          return;
+        }
+        const tuning = actor.definition.tuning.basic;
+        api.spawnProjectile({
+          position: actor.position,
+          direction: api.directionTo(target),
+          speed: tuning.speed,
+          radius: tuning.radius,
+          damage: tuning.damage,
+          color: "#fff2a6",
+          lifetime: tuning.lifetime,
+          bounces: 0,
+          knockback: tuning.knockback,
+          shape: "needle",
+          length: tuning.length,
+        });
+      },
+    },
+    ultimate: {
+      name: "死亡绽放",
+      execute({ actor, api }) {
+        const tuning = actor.definition.tuning.ultimate;
+        api.lockMovement(tuning.lockDuration);
+        api.emitText("蓄针", actor.position, "#ffe89f");
+        api.shake(10, 0.18);
+        scheduleBurstRain(api, {
+          startDelay: tuning.startDelay,
+          duration: tuning.duration,
+          waves: tuning.waves,
+          shots: tuning.shots,
+          speed: tuning.speed,
+          radius: tuning.radius,
+          damage: tuning.damage,
+          color: "#fff5bc",
+          lifetime: tuning.lifetime,
+          bounces: 0,
+          knockback: tuning.knockback,
+          shape: "needle",
+          length: tuning.length,
+        });
+      },
+    },
+  }),
+  defineCharacter({
+    id: "plague-mist",
+    name: "瘟疫",
+    title: "尾迹封锁",
+    color: "#70db5d",
+    description: "移动就会泼洒毒液，靠持续减速和掉血封死走位，再用毒爆收割。",
+    visual: {
+      motif: "plague",
+    },
+    stats: {
+      maxHp: 100,
+      speed: 176,
+      maxEssence: 2,
+      attackRange: 150,
+      radius: 18,
+    },
+    tuning: {
+      basic: {
+        trailRadius: 17,
+        trailLifetime: 2,
+        poisonDuration: 1.1,
+        poisonDamage: 1,
+        tickInterval: 0.5,
+        slowFactor: 0.62,
+        slowDuration: 0.6,
+      },
+      ultimate: {
+        pulseRadius: 28,
+        poisonedDamage: 10,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+          editableField("stats.attackRange", "控制范围", { min: 40, step: 1 }),
+        ],
+      },
+      {
+        title: "平A",
+        fields: [
+          editableField("basicAttack.triggers.0.interval", "尾迹间隔", { min: 0.05, step: 0.01, unit: "s" }),
+          editableField("tuning.basic.trailLifetime", "尾迹持续", { min: 0.2, step: 0.1, unit: "s" }),
+          editableField("tuning.basic.poisonDamage", "中毒伤害", { min: 1, step: 1 }),
+          editableField("tuning.basic.tickInterval", "掉血间隔", { min: 0.1, step: 0.1, unit: "s" }),
+          editableField("tuning.basic.slowFactor", "减速倍率", { min: 0.1, max: 1, step: 0.01 }),
+        ],
+      },
+      {
+        title: "大招",
+        fields: [
+          editableField("tuning.ultimate.poisonedDamage", "毒爆伤害", { min: 1, step: 1 }),
+          editableField("tuning.ultimate.pulseRadius", "爆炸范围", { min: 10, step: 1 }),
+        ],
+      },
+    ],
+    basicAttack: {
+      name: "剧毒尾迹",
+      triggers: [{ type: "trail", interval: 0.14 }],
+      execute({ actor, api }) {
+        const tuning = actor.definition.tuning.basic;
+        const backward = api.normalize({
+          x: -actor.velocity.x,
+          y: -actor.velocity.y,
+        });
+        api.createTrail({
+          position: {
+            x: actor.position.x + backward.x * 11,
+            y: actor.position.y + backward.y * 11,
+          },
+          radius: tuning.trailRadius,
+          lifetime: tuning.trailLifetime,
+          color: "#8af46d",
+          poisonDuration: tuning.poisonDuration,
+          poisonDamage: tuning.poisonDamage,
+          tickInterval: tuning.tickInterval,
+          slowFactor: tuning.slowFactor,
+          slowDuration: tuning.slowDuration,
+        });
+      },
+    },
+    ultimate: {
+      name: "全屏毒爆",
+      execute({ actor, api }) {
+        const tuning = actor.definition.tuning.ultimate;
+        const exploded = api.explodeOwnedTrails({
+          pulseRadius: tuning.pulseRadius,
+          pulseColor: "#c2ff81",
+          poisonedDamage: tuning.poisonedDamage,
+        });
+        if (!exploded) {
+          api.emitText("无尾迹", actor.position, "#b8ff84");
+        }
+        api.shake(15, 0.28);
+      },
+    },
+  }),
+  defineCharacter({
+    id: "meat-grinder",
+    name: "绞肉机",
+    title: "近战碾碎",
+    color: "#ff685d",
+    description: "依靠锯齿碰撞直接切血，免疫地图尖刺，还能在击杀后瞬间回血继续滚雪球。",
+    visual: {
+      motif: "grinder",
+    },
+    stats: {
+      maxHp: 150,
+      speed: 164,
+      maxEssence: 4,
+      attackRange: 80,
+      radius: 21,
+    },
+    tuning: {
+      basic: {
+        contactDamage: 5,
+      },
+      passive: {
+        healOnKill: 30,
+      },
+      ultimate: {
+        radiusScale: 1.5,
+        duration: 6,
+        chaseStrength: 6.5,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+          editableField("stats.radius", "球体半径", { min: 8, step: 1 }),
+        ],
+      },
+      {
+        title: "平A与被动",
+        fields: [
+          editableField("basicAttack.triggers.0.cooldown", "碰撞冷却", { min: 0.01, step: 0.01, unit: "s" }),
+          editableField("tuning.basic.contactDamage", "碰撞伤害", { min: 1, step: 1 }),
+          editableField("tuning.passive.healOnKill", "击杀回血", { min: 0, step: 1 }),
+        ],
+      },
+      {
+        title: "大招",
+        fields: [
+          editableField("tuning.ultimate.radiusScale", "体型倍率", { min: 1, step: 0.1 }),
+          editableField("tuning.ultimate.duration", "持续时间", { min: 0.5, step: 0.1, unit: "s" }),
+          editableField("tuning.ultimate.chaseStrength", "追击强度", { min: 0.5, step: 0.1 }),
+        ],
+      },
+    ],
+    onSpawn({ actor }) {
+      actor.state.hazardImmune = true;
+    },
+    onKill({ actor, api }) {
+      api.heal(actor.definition.tuning.passive.healOnKill);
+      api.emitText(`+${actor.definition.tuning.passive.healOnKill}`, actor.position, "#ffd5c9");
+    },
+    basicAttack: {
+      name: "高频锯齿",
+      triggers: [{ type: "collision", cooldown: 0.16 }],
+      execute({ actor, event, api }) {
+        if (!event?.other?.alive) {
+          return;
+        }
+        api.dealDamage(event.other, actor.definition.tuning.basic.contactDamage, {
+          color: "#ff9a84",
+        });
+        api.shake(6, 0.08);
+      },
+    },
+    ultimate: {
+      name: "嗜血冲锋",
+      execute({ actor, api }) {
+        const tuning = actor.definition.tuning.ultimate;
+        const target = api.findLowestHpEnemy();
+        api.setRadiusScale(tuning.radiusScale, tuning.duration);
+        api.grantInvulnerable(tuning.duration);
+        api.forceChase(target, tuning.duration, tuning.chaseStrength);
+        api.emitText("嗜血", actor.position, "#ffd2c8");
+        api.shake(18, 0.32);
+      },
+    },
+  }),
+  defineCharacter({
+    id: "storm-magnet",
+    name: "磁暴",
+    title: "反弹雷环",
+    color: "#69beff",
+    description: "一旦撞墙就释放电弧，靠场地几何制造范围压制，再用延迟落雷惩罚站位。",
+    visual: {
+      motif: "magnet",
+    },
+    stats: {
+      maxHp: 100,
+      speed: 182,
+      maxEssence: 3,
+      attackRange: 140,
+      radius: 18,
+    },
+    tuning: {
+      basic: {
+        pulseRadius: 96,
+        damage: 5,
+        knockback: 150,
+      },
+      ultimate: {
+        delay: 1,
+        radius: 28,
+        damage: 30,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+          editableField("stats.attackRange", "判定范围", { min: 20, step: 1 }),
+        ],
+      },
+      {
+        title: "平A",
+        fields: [
+          editableField("basicAttack.triggers.0.cooldown", "撞墙冷却", { min: 0, step: 0.01, unit: "s" }),
+          editableField("tuning.basic.damage", "脉冲伤害", { min: 1, step: 1 }),
+          editableField("tuning.basic.pulseRadius", "脉冲半径", { min: 10, step: 1 }),
+          editableField("tuning.basic.knockback", "脉冲击退", { min: 0, step: 5 }),
+        ],
+      },
+      {
+        title: "大招",
+        fields: [
+          editableField("tuning.ultimate.delay", "落雷延迟", { min: 0, step: 0.05, unit: "s" }),
+          editableField("tuning.ultimate.radius", "落雷范围", { min: 10, step: 1 }),
+          editableField("tuning.ultimate.damage", "落雷伤害", { min: 1, step: 1 }),
+        ],
+      },
+    ],
+    basicAttack: {
+      name: "弹射电弧",
+      triggers: [{ type: "onWallBounce", cooldown: 0.02 }],
+      execute({ actor, api }) {
+        const tuning = actor.definition.tuning.basic;
+        api.spawnPulse({
+          radius: tuning.pulseRadius,
+          damage: tuning.damage,
+          color: "#9ae1ff",
+          knockback: tuning.knockback,
+          requireLineOfSight: true,
+          shake: 7,
+        });
+      },
+    },
+    ultimate: {
+      name: "天怒神罚",
+      execute({ actor, api, enemies }) {
+        const tuning = actor.definition.tuning.ultimate;
+        let strikeCount = 0;
+        enemies
+          .filter((enemy) => enemy.alive)
+          .forEach((enemy) => {
+            strikeCount += 1;
+            api.spawnStrike({
+              position: enemy.position,
+              delay: tuning.delay,
+              radius: tuning.radius,
+              damage: tuning.damage,
+              color: "#c9eeff",
+              strikeType: "lightning",
+            });
+          });
+        if (strikeCount > 0) {
+          api.shake(16, 0.3);
+        }
+      },
+    },
+  }),
+  defineCharacter({
+    id: "turret-smith",
+    name: "炮台",
+    title: "阵地推进",
+    color: "#d7a35f",
+    description: "定期在移动路径上铺设炮台，拖住战场节奏后再一键升级成机枪塔进行火力覆盖。",
+    visual: {
+      motif: "turret",
+    },
+    stats: {
+      maxHp: 120,
+      speed: 156,
+      maxEssence: 3,
+      attackRange: 230,
+      radius: 18,
+    },
+    tuning: {
+      basic: {
+        maxCount: 3,
+        radius: 15,
+        fireInterval: 1.2,
+        damage: 5,
+        range: 250,
+        maxHits: 2,
+      },
+      ultimate: {
+        damage: 8,
+        fireIntervalMultiplier: 0.5,
+        maxHits: 3,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+          editableField("stats.attackRange", "控场范围", { min: 20, step: 1 }),
+        ],
+      },
+      {
+        title: "平A",
+        fields: [
+          editableField("basicAttack.triggers.0.interval", "召唤间隔", { min: 0.2, step: 0.1, unit: "s" }),
+          editableField("tuning.basic.maxCount", "炮台上限", { min: 1, step: 1 }),
+          editableField("tuning.basic.damage", "炮台伤害", { min: 1, step: 1 }),
+          editableField("tuning.basic.fireInterval", "开火间隔", { min: 0.1, step: 0.05, unit: "s" }),
+          editableField("tuning.basic.maxHits", "耐撞次数", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "大招",
+        fields: [
+          editableField("tuning.ultimate.damage", "升级伤害", { min: 1, step: 1 }),
+          editableField("tuning.ultimate.fireIntervalMultiplier", "攻速倍率", { min: 0.1, step: 0.05 }),
+          editableField("tuning.ultimate.maxHits", "升级耐撞", { min: 1, step: 1 }),
+        ],
+      },
+    ],
+    basicAttack: {
+      name: "微型无人机",
+      triggers: [{ type: "interval", interval: 5 }],
+      execute({ actor, api }) {
+        const tuning = actor.definition.tuning.basic;
+        const spawned = api.summonTurret({
+          maxCount: tuning.maxCount,
+          radius: tuning.radius,
+          fireInterval: tuning.fireInterval,
+          damage: tuning.damage,
+          range: tuning.range,
+          maxHits: tuning.maxHits,
+          color: "#f1c27b",
+          projectileColor: "#ffd89b",
+        });
+        if (!spawned) {
+          api.emitText("已满", actor.position, "#f4d4a8");
+        }
+      },
+    },
+    ultimate: {
+      name: "火力覆盖",
+      execute({ actor, api }) {
+        const tuning = actor.definition.tuning.ultimate;
+        const upgraded = api.upgradeTurrets({
+          damage: tuning.damage,
+          fireIntervalMultiplier: tuning.fireIntervalMultiplier,
+          maxHits: tuning.maxHits,
+          color: "#ffe4a9",
+          projectileColor: "#fff1b3",
+        });
+        if (!upgraded) {
+          api.emitText("无炮台", actor.position, "#ffe2aa");
+        }
+        api.shake(14, 0.25);
+      },
+    },
+  }),
+  defineCharacter({
+    id: "bomber-rex",
+    name: "轰炸机",
+    title: "重火力轰炸",
+    color: "#ff7a4d",
+    description: "每隔2.5秒向随机敌人当前位置投掷高爆榴弹，落地后产生延迟爆炸。死亡后尸体附近区域会在5秒倒计时后遭到一次重轰炸。大招停滞无敌，随后向场地倾泻五枚重型榴弹。",
+    visual: { motif: "bomber" },
+    stats: {
+      maxHp: 90,
+      speed: 168,
+      maxEssence: 3,
+      attackRange: 260,
+      radius: 18,
+    },
+    tuning: {
+      basic: {
+        delay: 0.5,
+        radius: 38,
+        damage: 12,
+      },
+      passive: {
+        deathDelay: 5,
+        deathRadius: 52,
+        deathDamage: 30,
+        deathScatter: 28,
+      },
+      ultimate: {
+        lockDuration: 1,
+        count: 5,
+        delay: 0.7,
+        radius: 44,
+        damage: 14,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "平A",
+        fields: [
+          editableField("basicAttack.triggers.0.interval", "发射间隔", { min: 0.5, step: 0.1, unit: "s" }),
+          editableField("tuning.basic.delay", "引爆延迟", { min: 0.1, step: 0.05, unit: "s" }),
+          editableField("tuning.basic.radius", "爆炸范围", { min: 10, step: 1 }),
+          editableField("tuning.basic.damage", "爆炸伤害", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "被动",
+        fields: [
+          editableField("tuning.passive.deathDelay", "遗爆延迟", { min: 0.5, step: 0.1, unit: "s" }),
+          editableField("tuning.passive.deathRadius", "遗爆范围", { min: 10, step: 1 }),
+          editableField("tuning.passive.deathDamage", "遗爆伤害", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "大招",
+        fields: [
+          editableField("tuning.ultimate.lockDuration", "停滞时间", { min: 0.2, step: 0.1, unit: "s" }),
+          editableField("tuning.ultimate.count", "榴弹数量", { min: 1, step: 1 }),
+          editableField("tuning.ultimate.damage", "大招伤害", { min: 1, step: 1 }),
+          editableField("tuning.ultimate.radius", "大招范围", { min: 10, step: 1 }),
+        ],
+      },
+    ],
+    basicAttack: {
+      name: "抛物线榴弹",
+      triggers: [{ type: "interval", interval: 2.5 }],
+      execute({ actor, api, enemies }) {
+        const living = enemies.filter((e) => e.alive);
+        if (!living.length) return;
+        const target = living[Math.floor(Math.random() * living.length)];
+        const pos = { ...target.position };
+        const tuning = actor.definition.tuning.basic;
+        api.spawnStrike({ position: pos, delay: tuning.delay, radius: tuning.radius, damage: tuning.damage, color: "#ff6633" });
+      },
+    },
+    onDeath({ actor, api }) {
+      const tuning = actor.definition.tuning.passive;
+      const angle = Math.random() * Math.PI * 2;
+      const offset = Math.random() * tuning.deathScatter;
+      const position = {
+        x: actor.position.x + Math.cos(angle) * offset,
+        y: actor.position.y + Math.sin(angle) * offset,
+      };
+
+      api.spawnStrike({
+        position,
+        delay: tuning.deathDelay,
+        radius: tuning.deathRadius,
+        damage: tuning.deathDamage,
+        color: "#ff6633",
+      });
+    },
+    ultimate: {
+      name: "地毯式轰炸",
+      execute({ actor, api, enemies }) {
+        const tuning = actor.definition.tuning.ultimate;
+        api.lockMovement(tuning.lockDuration);
+        api.grantInvulnerable(tuning.lockDuration);
+        api.emitText("轰炸", actor.position, "#ff8866");
+        api.shake(16, 0.28);
+        const living = enemies.filter((e) => e.alive);
+        for (let i = 0; i < tuning.count; i += 1) {
+          const capturedTarget = living.length ? living[Math.floor(Math.random() * living.length)] : null;
+          api.schedule(tuning.lockDuration + i * 0.28, ({ actor: a, api: sApi, game }) => {
+            if (!a.alive) return;
+            const center = game.state.arena.center;
+            const pos = capturedTarget?.alive
+              ? { ...capturedTarget.position }
+              : { x: center.x + (Math.random() - 0.5) * 220, y: center.y + (Math.random() - 0.5) * 150 };
+            sApi.spawnStrike({ position: pos, delay: tuning.delay, radius: tuning.radius, damage: tuning.damage, color: "#ff5522" });
+          });
+        }
+      },
+    },
+  }),
+  defineCharacter({
+    id: "blood-leech",
+    name: "汲取者",
+    title: "锁链吸血",
+    color: "#cc4466",
+    description: "每隔4秒向最近敌人发射吸血锁链，命中后每0.5秒吸取2滴血，超出距离或有墙壁阻挡则断开。大招移速减半，向所有敌人强制发射无法断开的锁链。",
+    visual: { motif: "leech" },
+    stats: {
+      maxHp: 110,
+      speed: 158,
+      maxEssence: 3,
+      attackRange: 280,
+      radius: 18,
+    },
+    tuning: {
+      basic: {
+        maxRange: 280,
+        drainDamage: 2,
+        healAmount: 2,
+        tickInterval: 0.5,
+        maxTicks: 6,
+      },
+      ultimate: {
+        drainDamage: 3,
+        healAmount: 3,
+        tickInterval: 0.5,
+        maxTicks: 6,
+        speedDebuff: 0.5,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+          editableField("stats.attackRange", "索链范围", { min: 40, step: 1 }),
+        ],
+      },
+      {
+        title: "平A",
+        fields: [
+          editableField("basicAttack.triggers.0.interval", "发射间隔", { min: 1, step: 0.5, unit: "s" }),
+          editableField("tuning.basic.drainDamage", "每次吸血", { min: 1, step: 1 }),
+          editableField("tuning.basic.healAmount", "每次回血", { min: 0, step: 1 }),
+          editableField("tuning.basic.maxTicks", "最大次数", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "大招",
+        fields: [
+          editableField("tuning.ultimate.drainDamage", "大招吸血", { min: 1, step: 1 }),
+          editableField("tuning.ultimate.healAmount", "大招回血", { min: 0, step: 1 }),
+          editableField("tuning.ultimate.maxTicks", "大招次数", { min: 1, step: 1 }),
+        ],
+      },
+    ],
+    onSpawn({ actor }) {
+      actor.state.drainActive = false;
+    },
+    basicAttack: {
+      name: "鲜血锁链",
+      triggers: [{ type: "interval", interval: 4 }],
+      execute({ actor, api }) {
+        if (actor.state.drainActive) return;
+        const tuning = actor.definition.tuning.basic;
+        const target = api.findNearestEnemy(tuning.maxRange);
+        if (!target) return;
+
+        actor.state.drainActive = true;
+        const targetId = target.id;
+        const totalDuration = tuning.tickInterval * tuning.maxTicks;
+        api.createDrainBeam({ targetId, duration: totalDuration, color: actor.color });
+
+        let ticks = 0;
+        function tick({ actor: a, api: sApi, game }) {
+          const currentTarget = game.findActorById(targetId);
+          if (!currentTarget?.alive || !a.alive || ticks >= tuning.maxTicks) {
+            a.state.drainActive = false;
+            return;
+          }
+          const dist = sApi.distance(a, currentTarget);
+          if (dist > tuning.maxRange + currentTarget.radius) {
+            a.state.drainActive = false;
+            return;
+          }
+          if (!game.hasLineOfSight(a.position, currentTarget.position)) {
+            a.state.drainActive = false;
+            return;
+          }
+          sApi.dealDamage(currentTarget, tuning.drainDamage);
+          sApi.heal(tuning.healAmount);
+          ticks += 1;
+          sApi.schedule(tuning.tickInterval, tick);
+        }
+        api.schedule(tuning.tickInterval, tick);
+      },
+    },
+    ultimate: {
+      name: "血池降临",
+      execute({ actor, api, enemies }) {
+        const tuning = actor.definition.tuning.ultimate;
+        const totalDuration = tuning.tickInterval * tuning.maxTicks;
+        api.setSpeedMultiplier(tuning.speedDebuff, totalDuration);
+        api.emitText("汲取", actor.position, "#ff6688");
+        api.shake(12, 0.22);
+
+        const targets = enemies.filter((e) => e.alive);
+        if (!targets.length) return;
+
+        targets.forEach((target) => {
+          const targetId = target.id;
+          api.createDrainBeam({ targetId, duration: totalDuration, color: "#ff4466" });
+          let ticks = 0;
+          function tick({ actor: a, api: sApi, game }) {
+            const currentTarget = game.findActorById(targetId);
+            if (!currentTarget?.alive || !a.alive || ticks >= tuning.maxTicks) return;
+            sApi.dealDamage(currentTarget, tuning.drainDamage);
+            sApi.heal(tuning.healAmount);
+            ticks += 1;
+            sApi.schedule(tuning.tickInterval, tick);
+          }
+          api.schedule(tuning.tickInterval, tick);
+        });
+      },
+    },
+  }),
+  defineCharacter({
+    id: "phantom-mirror",
+    name: "欺诈师",
+    title: "分身迷惑",
+    color: "#aa88ee",
+    description: "每次碰撞敌方小球或撞墙后都有概率在原地留下一个静止分身，分身被撞击3次后爆炸造成范围伤害，最多同时存在3个。大招激活所有分身向最近敌人高速冲撞。",
+    visual: { motif: "mirror" },
+    stats: {
+      maxHp: 80,
+      speed: 186,
+      maxEssence: 2,
+      attackRange: 200,
+      radius: 18,
+    },
+    tuning: {
+      basic: {
+        spawnChance: 0.5,
+        maxCount: 3,
+        maxHits: 3,
+        explodeDamage: 8,
+        explodeRadius: 48,
+      },
+      ultimate: {
+        activateDamage: 15,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "平A",
+        fields: [
+          editableField("tuning.basic.spawnChance", "生成概率", { min: 0.05, max: 1, step: 0.05 }),
+          editableField("tuning.basic.maxCount", "分身上限", { min: 1, step: 1 }),
+          editableField("tuning.basic.maxHits", "分身耐撞", { min: 1, step: 1 }),
+          editableField("tuning.basic.explodeDamage", "爆炸伤害", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "大招",
+        fields: [
+          editableField("tuning.ultimate.activateDamage", "冲撞伤害", { min: 1, step: 1 }),
+        ],
+      },
+    ],
+    basicAttack: {
+      name: "光影镜像",
+      triggers: [
+        { type: "collision", cooldown: 0 },
+        { type: "onWallBounce", cooldown: 0 },
+      ],
+      execute({ actor, api }) {
+        const tuning = actor.definition.tuning.basic;
+        if (Math.random() >= tuning.spawnChance) return;
+        api.spawnDecoy({
+          maxCount: tuning.maxCount,
+          maxHits: tuning.maxHits,
+          explodeDamage: tuning.explodeDamage,
+          explodeRadius: tuning.explodeRadius,
+        });
+      },
+    },
+    ultimate: {
+      name: "镜像杀阵",
+      execute({ actor, api }) {
+        const tuning = actor.definition.tuning.ultimate;
+        const count = api.activateDecoys({ activateDamage: tuning.activateDamage });
+        if (!count) {
+          api.emitText("无分身", actor.position, "#ccaaff");
+        } else {
+          api.shake(14, 0.24);
+          api.emitText("激活", actor.position, "#e0ccff");
+        }
+      },
+    },
+  }),
+  defineCharacter({
+    id: "holy-shield",
+    name: "圣盾",
+    title: "防守反击",
+    color: "#f5d070",
+    description: "碰撞三次充能金色护盾，护盾期间免疫所有伤害。大招召唤等同自身半径长度的环绕圣剑，再次释放则延长圣剑。",
+    visual: { motif: "bastion" },
+    stats: {
+      maxHp: 140,
+      speed: 152,
+      maxEssence: 3,
+      attackRange: 80,
+      radius: 20,
+    },
+    tuning: {
+      basic: {
+        shieldDuration: 5,
+        chargesNeeded: 3,
+      },
+      ultimate: {
+        swordDamage: 8,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+          editableField("stats.radius", "球体半径", { min: 8, step: 1 }),
+        ],
+      },
+      {
+        title: "平A",
+        fields: [
+          editableField("tuning.basic.shieldDuration", "护盾时长", { min: 1, step: 0.5, unit: "s" }),
+          editableField("tuning.basic.chargesNeeded", "充能次数", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "大招",
+        fields: [
+          editableField("tuning.ultimate.swordDamage", "圣剑伤害", { min: 1, step: 1 }),
+        ],
+      },
+    ],
+    onSpawn({ actor }) {
+      actor.state.shieldCharges = 0;
+      actor.state.swordLength = 0;
+      actor.state.swordOrbitAngle = 0;
+      actor.state.swordDamageCooldowns = new Map();
+    },
+    basicAttack: {
+      name: "充能护甲",
+      triggers: [
+        { type: "collision", cooldown: 0.3 },
+        { type: "onWallBounce", cooldown: 0.3 },
+      ],
+      execute({ actor, api }) {
+        if (actor.state.invulnerableTime > 0) return;
+        const tuning = actor.definition.tuning.basic;
+        actor.state.shieldCharges = (actor.state.shieldCharges ?? 0) + 1;
+        if (actor.state.shieldCharges >= tuning.chargesNeeded) {
+          actor.state.shieldCharges = 0;
+          api.grantInvulnerable(tuning.shieldDuration);
+          api.emitText("圣盾！", actor.position, "#f5d070");
+          api.shake(10, 0.18);
+        }
+      },
+    },
+    ultimate: {
+      name: "绝对领域",
+      execute({ actor, api }) {
+        if (actor.state.swordLength <= 0) {
+          actor.state.swordLength = actor.baseRadius;
+          api.emitText("圣剑", actor.position, "#f5d070");
+        } else {
+          actor.state.swordLength += actor.baseRadius;
+          api.emitText(`剑+${actor.baseRadius}`, actor.position, "#fff2b0");
+        }
+        api.shake(12, 0.2);
+      },
+    },
+  }),
+  defineCharacter({
+    id: "frost-core",
+    name: "绝对零度",
+    title: "极致减速",
+    color: "#88ccff",
+    description: "不断向四个随机方向散射穿透型冰刺，每次命中叠加一层减速，叠满3层冻结敌人1.5秒。大招释放全屏冰霜冲击波，强制冻结所有敌人并为自身提速。",
+    visual: { motif: "frost" },
+    stats: {
+      maxHp: 120,
+      speed: 170,
+      maxEssence: 4,
+      attackRange: 300,
+      radius: 18,
+    },
+    tuning: {
+      basic: {
+        damage: 3,
+        speed: 340,
+        lifetime: 1.4,
+        knockback: 60,
+        pierceCount: 2,
+        slowFactor: 0.8,
+        stackDuration: 2,
+        maxStacks: 3,
+        freezeDuration: 1.5,
+      },
+      ultimate: {
+        damage: 10,
+        freezeDuration: 1.5,
+        speedBoostMultiplier: 2,
+        speedBoostDuration: 3,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "平A",
+        fields: [
+          editableField("basicAttack.triggers.0.interval", "发射间隔", { min: 0.2, step: 0.05, unit: "s" }),
+          editableField("tuning.basic.damage", "冰刺伤害", { min: 1, step: 1 }),
+          editableField("tuning.basic.slowFactor", "减速倍率", { min: 0.05, max: 0.95, step: 0.05 }),
+          editableField("tuning.basic.freezeDuration", "冻结时间", { min: 0.5, step: 0.1, unit: "s" }),
+        ],
+      },
+      {
+        title: "大招",
+        fields: [
+          editableField("tuning.ultimate.damage", "冲击伤害", { min: 1, step: 1 }),
+          editableField("tuning.ultimate.speedBoostMultiplier", "自身加速", { min: 1, step: 0.1 }),
+          editableField("tuning.ultimate.speedBoostDuration", "加速时间", { min: 0.5, step: 0.1, unit: "s" }),
+        ],
+      },
+    ],
+    basicAttack: {
+      name: "寒冰散射",
+      triggers: [{ type: "interval", interval: 1.5 }],
+      execute({ actor, api }) {
+        const tuning = actor.definition.tuning.basic;
+        for (let i = 0; i < 8; i += 1) {
+          const angle = Math.random() * Math.PI * 2;
+          api.spawnProjectile({
+            position: actor.position,
+            direction: { x: Math.cos(angle), y: Math.sin(angle) },
+            speed: tuning.speed,
+            radius: 4.5,
+            damage: tuning.damage,
+            color: "#c8f0ff",
+            lifetime: tuning.lifetime,
+            bounces: 0,
+            knockback: tuning.knockback,
+            pierce: tuning.pierceCount,
+            shape: "needle",
+            length: 14,
+            frostConfig: {
+              maxStacks: tuning.maxStacks,
+              stackDuration: tuning.stackDuration,
+              slowFactor: tuning.slowFactor,
+              freezeDuration: tuning.freezeDuration,
+            },
+          });
+        }
+      },
+    },
+    ultimate: {
+      name: "凛冬将至",
+      execute({ actor, api, enemies }) {
+        const tuning = actor.definition.tuning.ultimate;
+        api.emitText("凛冬", actor.position, "#b8e8ff");
+        api.shake(18, 0.32);
+        api.setSpeedMultiplier(tuning.speedBoostMultiplier, tuning.speedBoostDuration);
+        enemies.filter((e) => e.alive).forEach((enemy) => {
+          api.dealDamage(enemy, tuning.damage);
+          if (enemy.alive) {
+            api.forceFreezeTarget(enemy, tuning.freezeDuration);
+            api.emitText("冻结!", enemy.position, "#c8f0ff");
+          }
+        });
+      },
+    },
+  }),
+];
+
+const CHARACTER_DEFAULTS = Object.fromEntries(
+  CHARACTER_LIBRARY.map((character) => [
+    character.id,
+    Object.fromEntries(
+      character.editorSections.flatMap((section) =>
+        section.fields.map((field) => [field.path, deepClone(getByPath(character, field.path))]),
+      ),
+    ),
+  ]),
+);
+
+export function getCharacterById(id) {
+  return CHARACTER_LIBRARY.find((character) => character.id === id);
+}
+
+export function updateCharacterValue(id, path, nextValue) {
+  const character = getCharacterById(id);
+  if (!character || Number.isNaN(nextValue)) {
+    return false;
+  }
+  return setByPath(character, path, nextValue);
+}
+
+export function resetCharacterValues(id) {
+  const character = getCharacterById(id);
+  const defaults = CHARACTER_DEFAULTS[id];
+  if (!character || !defaults) {
+    return false;
+  }
+  Object.entries(defaults).forEach(([path, value]) => {
+    setByPath(character, path, deepClone(value));
+  });
+  return true;
+}

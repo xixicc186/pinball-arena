@@ -572,191 +572,166 @@ function renderRecordingFrame(snapshot = recordingState.latestSnapshot) {
 
   const currentSnapshot = recordingState.latestSnapshot;
   const ctx = recordingState.renderCtx;
-  const width = recordingState.renderCanvas.width;
-  const height = recordingState.renderCanvas.height;
-  const margin = Math.round(width * 0.01875);
-  const gap = Math.round(width * 0.00625);
-  const panelWidth = Math.round(width * 0.24);
-  const radius = Math.round(width * 0.0085);
+  const W = recordingState.renderCanvas.width;   // 1080
+  const H = recordingState.renderCanvas.height;  // 1920
+  const mg = 24;
+  const gp = 12;
+  const rd = 16;
   const hud = getHudDisplay(currentSnapshot);
-  const statusHeight = Math.round(height * 0.105);
-
-  ctx.clearRect(0, 0, width, height);
-  ctx.drawImage(canvas, 0, 0, width, height);
-
-  fillRoundedPanel(ctx, margin, margin, panelWidth, statusHeight, radius);
-
-  const pad = Math.round(width * 0.0105);
-  const innerWidth = panelWidth - pad * 2;
-  {
-    const statusX = margin + pad;
-    const statusY = margin + pad;
-    const statusBlockWidth = (innerWidth - gap) / 2;
-
-    ctx.save();
-    ctx.fillStyle = "rgba(255,255,255,0.68)";
-    ctx.font = `600 ${Math.round(height * 0.011)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText("璁℃椂", statusX, statusY);
-    ctx.fillText("闃舵", statusX + statusBlockWidth + gap, statusY);
-
-    ctx.fillStyle = "#fff7eb";
-    ctx.font = `700 ${Math.round(height * 0.018)}px "Trebuchet MS", "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(hud.timer, statusX, statusY + Math.round(height * 0.026));
-
-    ctx.font = `700 ${Math.round(height * 0.015)}px "Trebuchet MS", "Microsoft YaHei UI", sans-serif`;
-    drawTextBlock(
-      ctx,
-      hud.phase,
-      statusX + statusBlockWidth + gap,
-      statusY + Math.round(height * 0.008),
-      statusBlockWidth,
-      Math.round(height * 0.017),
-      2,
-    );
-    ctx.restore();
-
-    drawRecordingOverlay(ctx, width, height, margin, radius);
-    return;
-  }
+  const entries = getScoreboardEntries(currentSnapshot);
+  const contentW = W - mg * 2;  // 1032
 
   ctx.save();
-  ctx.fillStyle = "#f3d2a2";
-  ctx.font = `600 ${Math.round(height * 0.016)}px Georgia, "Microsoft YaHei UI", serif`;
-  ctx.fillText("鎴樻枟鎾姤", margin + pad, margin + pad + Math.round(height * 0.004));
 
-  const feedTop = margin + pad + Math.round(height * 0.028);
-  const itemGap = Math.round(height * 0.009);
-  const itemHeight = Math.round(height * 0.044);
-  battleFeedItems.forEach((entry, index) => {
-    const itemY = feedTop + index * (itemHeight + itemGap);
-    fillRoundedPanel(ctx, margin + pad, itemY, innerWidth, itemHeight, Math.round(radius * 0.78));
+  // Background
+  ctx.fillStyle = "#070710";
+  ctx.fillRect(0, 0, W, H);
 
-    ctx.fillStyle = "#f3d2a2";
-    ctx.font = `600 ${Math.round(height * 0.012)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(entry.stamp, margin + pad * 1.5, itemY + Math.round(height * 0.016));
+  // === HUD BAR (top) ===
+  const hudH = 84;
+  fillRoundedPanel(ctx, mg, mg, contentW, hudH, rd);
 
-    ctx.fillStyle = "#f5efe7";
-    ctx.font = `500 ${Math.round(height * 0.0125)}px "Microsoft YaHei UI", sans-serif`;
-    drawTextBlock(
-      ctx,
-      entry.message,
-      margin + pad * 1.5,
-      itemY + Math.round(height * 0.031),
-      innerWidth - pad,
-      Math.round(height * 0.0135),
-      2,
-    );
-  });
-  ctx.restore();
+  const hudPad = 20;
+  const timerColW = 170;
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
 
-  ctx.save();
-  const statusX = margin + pad;
-  const statusY = margin + feedHeight + gap + pad;
-  const statusBlockWidth = (innerWidth - gap) / 2;
-
-  ctx.fillStyle = "rgba(255,255,255,0.68)";
-  ctx.font = `600 ${Math.round(height * 0.011)}px "Microsoft YaHei UI", sans-serif`;
-  ctx.fillText("璁℃椂", statusX, statusY);
-  ctx.fillText("闃舵", statusX + statusBlockWidth + gap, statusY);
+  ctx.fillStyle = "rgba(255,255,255,0.52)";
+  ctx.font = `600 18px "Microsoft YaHei UI", sans-serif`;
+  ctx.fillText("计时", mg + hudPad, mg + 28);
+  ctx.fillText("阶段", mg + hudPad + timerColW, mg + 28);
 
   ctx.fillStyle = "#fff7eb";
-  ctx.font = `700 ${Math.round(height * 0.018)}px "Trebuchet MS", "Microsoft YaHei UI", sans-serif`;
-  ctx.fillText(hud.timer, statusX, statusY + Math.round(height * 0.026));
+  ctx.font = `700 36px "Trebuchet MS", "Microsoft YaHei UI", sans-serif`;
+  ctx.fillText(hud.timer, mg + hudPad, mg + 68);
 
-  ctx.font = `700 ${Math.round(height * 0.015)}px "Trebuchet MS", "Microsoft YaHei UI", sans-serif`;
-  drawTextBlock(
-    ctx,
-    hud.phase,
-    statusX + statusBlockWidth + gap,
-    statusY + Math.round(height * 0.008),
-    statusBlockWidth,
-    Math.round(height * 0.017),
-    2,
-  );
-  ctx.restore();
-
-  ctx.save();
-  const scorePanelY = height - margin - scorePanelHeight;
-  const scoreX = margin + pad;
-  const scoreY = scorePanelY + pad + Math.round(height * 0.004);
-  const scoreInnerWidth = panelWidth - pad * 2;
-
-  ctx.fillStyle = "#f3d2a2";
-  ctx.font = `600 ${Math.round(height * 0.016)}px Georgia, "Microsoft YaHei UI", serif`;
-  ctx.fillText("瀛樻椿鍒楄〃", scoreX, scoreY);
-
-  const rowTop = scorePanelY + pad + Math.round(height * 0.028);
-  const rowHeight = Math.round(height * 0.06);
-  scoreboardEntries.forEach((actor, index) => {
-    const rowY = rowTop + index * (rowHeight + itemGap);
-    if (rowY + rowHeight > scorePanelY + scorePanelHeight - pad) {
-      return;
-    }
-
-    fillRoundedPanel(ctx, scoreX, rowY, scoreInnerWidth, rowHeight, Math.round(radius * 0.78));
-
-    ctx.fillStyle = actor.color;
-    ctx.font = `700 ${Math.round(height * 0.013)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(actor.name, scoreX + Math.round(width * 0.006), rowY + Math.round(height * 0.018));
-
-    ctx.textAlign = "right";
-    ctx.fillStyle = actor.alive ? "#f5efe7" : "rgba(245, 239, 231, 0.55)";
-    ctx.font = `600 ${Math.round(height * 0.0105)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(actor.alive ? "瀛樻椿" : "娣樻卑", scoreX + scoreInnerWidth - Math.round(width * 0.006), rowY + Math.round(height * 0.018));
-
-    ctx.textAlign = "left";
-    ctx.fillStyle = "rgba(255,255,255,0.68)";
-    ctx.font = `500 ${Math.round(height * 0.01)}px "Microsoft YaHei UI", sans-serif`;
-    if (actor.title) {
-      ctx.fillText(actor.title, scoreX + Math.round(width * 0.006), rowY + Math.round(height * 0.028));
-    }
-
-    const barX = scoreX + Math.round(width * 0.006);
-    const barWidth = scoreInnerWidth - Math.round(width * 0.012);
-    const hpY = rowY + Math.round(height * 0.034);
-    const essenceY = hpY + Math.round(height * 0.012);
-
-    ctx.fillStyle = "rgba(255,255,255,0.08)";
-    roundRectPath(ctx, barX, hpY, barWidth, Math.round(height * 0.007), Math.round(height * 0.0035));
-    ctx.fill();
-    roundRectPath(ctx, barX, essenceY, barWidth, Math.round(height * 0.007), Math.round(height * 0.0035));
-    ctx.fill();
-
-    ctx.fillStyle = "#ff916f";
-    roundRectPath(
-      ctx,
-      barX,
-      hpY,
-      Math.max(0, barWidth * (actor.maxHp ? actor.hp / actor.maxHp : 0)),
-      Math.round(height * 0.007),
-      Math.round(height * 0.0035),
-    );
-    ctx.fill();
-
-    ctx.fillStyle = "#f6dc7d";
-    roundRectPath(
-      ctx,
-      barX,
-      essenceY,
-      Math.max(0, barWidth * (actor.maxEssence ? actor.essence / actor.maxEssence : 0)),
-      Math.round(height * 0.007),
-      Math.round(height * 0.0035),
-    );
-    ctx.fill();
-
-    ctx.fillStyle = "rgba(255,255,255,0.68)";
-    ctx.font = `500 ${Math.round(height * 0.01)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(
-      `HP ${actor.hp}/${actor.maxHp} 路 绮惧厓 ${actor.essence}/${actor.maxEssence}`,
-      barX,
-      rowY + Math.round(height * 0.054),
-    );
+  ctx.font = `700 22px "Microsoft YaHei UI", sans-serif`;
+  const phaseLines = wrapText(ctx, hud.phase, contentW - timerColW - hudPad * 2, 2);
+  phaseLines.forEach((line, li) => {
+    ctx.fillText(line, mg + hudPad + timerColW, mg + 44 + li * 26);
   });
+
+  // === GAME CANVAS ===
+  const gameY = mg + hudH + gp;
+  const gameW = contentW;
+  const gameH = Math.round(gameW * canvas.height / canvas.width);
+  ctx.drawImage(canvas, mg, gameY, gameW, gameH);
+  ctx.strokeStyle = "rgba(255,255,255,0.07)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(mg, gameY, gameW, gameH);
+
+  // === MATCH RESULT BANNER (overlaid on game area) ===
+  if (!overlay.classList.contains("hidden")) {
+    const eyebrow = overlay.querySelector(".overlay-eyebrow")?.textContent?.trim() ?? "";
+    const title = overlay.querySelector("h2")?.textContent?.trim() ?? "";
+    if (eyebrow || title) {
+      const bannerH = 132;
+      const bannerY = gameY + (gameH - bannerH) / 2;
+      ctx.fillStyle = "rgba(6,6,12,0.88)";
+      roundRectPath(ctx, mg, bannerY, gameW, bannerH, rd);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(243,210,162,0.45)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillStyle = "#f3d2a2";
+      ctx.font = `600 22px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(eyebrow, mg + gameW / 2, bannerY + 38);
+      ctx.fillStyle = "#fff7eb";
+      ctx.font = `700 46px Georgia, "Microsoft YaHei UI", serif`;
+      ctx.fillText(title, mg + gameW / 2, bannerY + 102);
+    }
+  }
+
+  // === SCOREBOARD (below game) ===
+  if (entries.length > 0) {
+    const scoreTop = gameY + gameH + gp;
+    const scoreAreaH = H - scoreTop - mg;
+    const rowH = Math.floor((scoreAreaH - (entries.length - 1) * gp) / entries.length);
+    const rowPad = 16;
+    const barH = Math.max(8, Math.round(rowH * 0.065));
+    const barR = Math.round(barH / 2);
+
+    entries.forEach((actor, idx) => {
+      const rowY = scoreTop + idx * (rowH + gp);
+      const character = getCharacterById(actor.characterId);
+      fillRoundedPanel(ctx, mg, rowY, contentW, rowH, rd);
+
+      // Left color accent strip
+      ctx.save();
+      roundRectPath(ctx, mg, rowY, 6, rowH, 3);
+      ctx.fillStyle = actor.color;
+      ctx.fill();
+      ctx.restore();
+
+      const innerX = mg + 6 + rowPad;
+      const innerW = contentW - 6 - rowPad * 2;
+      const nameFontSize = Math.max(18, Math.min(30, Math.round(rowH * 0.22)));
+      const subFontSize = Math.max(13, Math.min(18, Math.round(rowH * 0.13)));
+      const skillFontSize = Math.max(12, Math.min(16, Math.round(rowH * 0.11)));
+
+      // Name
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillStyle = actor.color;
+      ctx.font = `700 ${nameFontSize}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(actor.name, innerX, rowY + rowPad);
+
+      // Title
+      ctx.fillStyle = "rgba(255,255,255,0.48)";
+      ctx.font = `500 ${subFontSize}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(actor.title, innerX, rowY + rowPad + nameFontSize + 4);
+
+      // Skills (if height allows)
+      if (character && rowH >= 140) {
+        const skillParts = [
+          character.basicAttack?.name && `普攻 ${character.basicAttack.name}`,
+          character.ultimate?.name && `大招 ${character.ultimate.name}`,
+        ].filter(Boolean);
+        ctx.fillStyle = "rgba(255,255,255,0.30)";
+        ctx.font = `500 ${skillFontSize}px "Microsoft YaHei UI", sans-serif`;
+        ctx.fillText(skillParts.join("  \u00b7  "), innerX, rowY + rowPad + nameFontSize + 4 + subFontSize + 4);
+      }
+
+      // Status badge (top-right)
+      ctx.textAlign = "right";
+      ctx.textBaseline = "top";
+      ctx.fillStyle = actor.alive ? "#7affad" : "rgba(245,239,231,0.38)";
+      ctx.font = `600 ${subFontSize}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(actor.alive ? "存活" : "淡汰", mg + contentW - rowPad, rowY + rowPad);
+
+      // HP bar
+      const hpBarY = rowY + rowH - rowPad - barH * 2 - 8;
+      ctx.fillStyle = "rgba(255,255,255,0.08)";
+      roundRectPath(ctx, innerX, hpBarY, innerW, barH, barR);
+      ctx.fill();
+      ctx.fillStyle = "#ff916f";
+      roundRectPath(ctx, innerX, hpBarY, Math.max(0, innerW * (actor.maxHp ? actor.hp / actor.maxHp : 0)), barH, barR);
+      ctx.fill();
+
+      // Essence bar
+      const esBarY = hpBarY + barH + 8;
+      ctx.fillStyle = "rgba(255,255,255,0.08)";
+      roundRectPath(ctx, innerX, esBarY, innerW, barH, barR);
+      ctx.fill();
+      ctx.fillStyle = "#f6dc7d";
+      roundRectPath(ctx, innerX, esBarY, Math.max(0, innerW * (actor.maxEssence ? actor.essence / actor.maxEssence : 0)), barH, barR);
+      ctx.fill();
+
+      // Bar labels
+      ctx.textBaseline = "bottom";
+      ctx.fillStyle = "rgba(255,255,255,0.4)";
+      ctx.font = `500 13px "Microsoft YaHei UI", sans-serif`;
+      ctx.textAlign = "left";
+      ctx.fillText(`HP ${actor.hp}/${actor.maxHp}`, innerX, hpBarY - 3);
+      ctx.textAlign = "right";
+      ctx.fillText(`精元 ${actor.essence}/${actor.maxEssence}`, innerX + innerW, esBarY - 3);
+    });
+  }
+
   ctx.restore();
-
-  drawRecordingOverlay(ctx, width, height, margin, radius);
 }
-
 function canRecordCanvas() {
   return typeof canvas.captureStream === "function" && typeof MediaRecorder !== "undefined";
 }
@@ -842,168 +817,214 @@ function stopDrawRecordingLoop() {
 }
 
 function renderDrawOnCanvas() {
-  const ctx = canvas.getContext("2d");
-  const W = canvas.width;
-  const H = canvas.height;
+  if (!recordingState.active || !recordingState.renderCanvas || !recordingState.renderCtx) {
+    return;
+  }
+
+  const ctx = recordingState.renderCtx;
+  const W = recordingState.renderCanvas.width;   // 1080
+  const H = recordingState.renderCanvas.height;  // 1920
+  const mg = 24;
+  const gp = 12;
+  const rd = 16;
   const slots = [...drawStageSlotsElement.querySelectorAll(".draw-slot")];
+  const slotCount = Math.max(1, slots.length);
 
   ctx.save();
-  ctx.fillStyle = "rgba(6, 6, 12, 0.96)";
+
+  // Background
+  ctx.fillStyle = "#070710";
   ctx.fillRect(0, 0, W, H);
 
+  // Title area
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
 
   ctx.fillStyle = "#f3d2a2";
-  ctx.font = `600 ${Math.round(H * 0.019)}px "Microsoft YaHei UI", serif`;
-  ctx.fillText("Draft", W / 2, H * 0.26);
+  ctx.font = `600 28px "Microsoft YaHei UI", serif`;
+  ctx.fillText("Draft", W / 2, 148);
 
   ctx.fillStyle = "#fff7eb";
-  ctx.font = `700 ${Math.round(H * 0.038)}px Georgia, "Microsoft YaHei UI", serif`;
-  ctx.fillText("随机抽取本局参战选手", W / 2, H * 0.335);
+  ctx.font = `700 52px Georgia, "Microsoft YaHei UI", serif`;
+  ctx.fillText("随机抽取本局参战选手", W / 2, 224);
 
   const summaryText = drawStageSummaryElement.textContent ?? "";
   if (summaryText) {
-    ctx.fillStyle = "rgba(255,255,255,0.62)";
-    ctx.font = `500 ${Math.round(H * 0.017)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(summaryText, W / 2, H * 0.395);
+    ctx.fillStyle = "rgba(255,255,255,0.58)";
+    ctx.font = `500 26px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(summaryText, W / 2, 284);
   }
 
-  const slotCount = slots.length || 1;
-  const slotW = Math.round(W * 0.175);
-  const slotH = Math.round(H * 0.42);
-  const slotGap = Math.round(W * 0.022);
-  const totalW = slotCount * slotW + (slotCount - 1) * slotGap;
-  const startX = (W - totalW) / 2;
-  const slotTop = H * 0.44;
-  const r = Math.round(W * 0.007);
-  const pad = Math.round(W * 0.009);
+  // Slots stacked vertically
+  const slotsTop = 320;
+  const slotW = W - mg * 2;
+  const slotsAvailH = H - slotsTop - mg;
+  const slotH = Math.floor((slotsAvailH - (slotCount - 1) * gp) / slotCount);
+  const leftRatio = 0.30;
+  const leftBlockW = Math.round(slotW * leftRatio);
 
   slots.forEach((slotEl, i) => {
     const settled = slotEl.classList.contains("settled");
     const name = slotEl.querySelector(".draw-slot-label")?.textContent ?? "---";
     const title = slotEl.querySelector(".draw-slot-title")?.textContent ?? "";
     const indexLabel = slotEl.querySelector(".draw-slot-index")?.textContent ?? `Slot ${i + 1}`;
-    const accentColor = slotEl.style.getPropertyValue("--slot-accent") || "rgba(255,255,255,0.15)";
+    const accentColor = slotEl.style.getPropertyValue("--slot-accent") || null;
     const character = settled ? CHARACTER_LIBRARY.find((c) => c.name === name) : null;
 
-    const x = startX + i * (slotW + slotGap);
-    const cx = x + slotW / 2;
+    const sx = mg;
+    const sy = slotsTop + i * (slotH + gp);
+    const panelRx = Math.min(rd, slotW / 2, slotH / 2);
 
     // Panel background
     ctx.beginPath();
-    const rx = Math.min(r, slotW / 2, slotH / 2);
-    ctx.moveTo(x + rx, slotTop);
-    ctx.arcTo(x + slotW, slotTop, x + slotW, slotTop + slotH, rx);
-    ctx.arcTo(x + slotW, slotTop + slotH, x, slotTop + slotH, rx);
-    ctx.arcTo(x, slotTop + slotH, x, slotTop, rx);
-    ctx.arcTo(x, slotTop, x + slotW, slotTop, rx);
+    ctx.moveTo(sx + panelRx, sy);
+    ctx.arcTo(sx + slotW, sy, sx + slotW, sy + slotH, panelRx);
+    ctx.arcTo(sx + slotW, sy + slotH, sx, sy + slotH, panelRx);
+    ctx.arcTo(sx, sy + slotH, sx, sy, panelRx);
+    ctx.arcTo(sx, sy, sx + slotW, sy, panelRx);
     ctx.closePath();
     ctx.fillStyle = settled ? "rgba(30,25,10,0.96)" : "rgba(16,16,28,0.95)";
     ctx.fill();
-    ctx.strokeStyle = settled ? accentColor || "rgba(243,210,162,0.55)" : "rgba(255,255,255,0.12)";
+    ctx.strokeStyle = settled ? (accentColor || "rgba(243,210,162,0.55)") : "rgba(255,255,255,0.12)";
     ctx.lineWidth = settled ? 3 : 1.5;
     ctx.stroke();
 
-    // Slot index label
-    ctx.fillStyle = "rgba(255,255,255,0.4)";
-    ctx.font = `500 ${Math.round(H * 0.013)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(indexLabel, cx, slotTop + Math.round(H * 0.038));
-
-    // Character name (smaller than before)
-    ctx.fillStyle = settled ? "#fff7eb" : "rgba(200,200,200,0.55)";
-    ctx.font = `${settled ? "700" : "500"} ${Math.round(H * 0.022)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(name, cx, slotTop + Math.round(H * 0.088));
-
-    // Title/class
-    if (title) {
-      ctx.fillStyle = settled ? "#f3d2a2" : "rgba(255,255,255,0.35)";
-      ctx.font = `500 ${Math.round(H * 0.014)}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(title, cx, slotTop + Math.round(H * 0.112));
+    // Color accent strip on left (settled only)
+    if (settled && character) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(sx + panelRx, sy);
+      ctx.arcTo(sx + slotW, sy, sx + slotW, sy + slotH, panelRx);
+      ctx.arcTo(sx + slotW, sy + slotH, sx, sy + slotH, panelRx);
+      ctx.arcTo(sx, sy + slotH, sx, sy, panelRx);
+      ctx.arcTo(sx, sy, sx + slotW, sy, panelRx);
+      ctx.closePath();
+      ctx.clip();
+      ctx.fillStyle = character.color;
+      ctx.globalAlpha = 0.55;
+      ctx.fillRect(sx, sy, 8, slotH);
+      ctx.globalAlpha = 1;
+      ctx.restore();
     }
 
-    if (settled && character) {
-      // Divider after name block
-      const div1Y = slotTop + Math.round(H * 0.132);
-      ctx.strokeStyle = "rgba(255,255,255,0.1)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x + pad, div1Y);
-      ctx.lineTo(x + slotW - pad, div1Y);
-      ctx.stroke();
-
-      // Skills
-      const skillLabelX = x + pad + Math.round(W * 0.004);
-      const skillValueX = x + slotW - pad - Math.round(W * 0.004);
-      const skill1Y = slotTop + Math.round(H * 0.158);
-      const skill2Y = slotTop + Math.round(H * 0.182);
+    if (!settled) {
+      // Spinning: centered name
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "rgba(255,255,255,0.38)";
+      ctx.font = `500 ${Math.min(20, Math.round(slotH * 0.14))}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(indexLabel, sx + slotW / 2, sy + slotH * 0.20);
+      ctx.fillStyle = "rgba(200,200,200,0.52)";
+      ctx.font = `600 ${Math.min(42, Math.round(slotH * 0.28))}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(name, sx + slotW / 2, sy + slotH * 0.50);
+      ctx.fillStyle = "rgba(255,255,255,0.22)";
+      ctx.font = `500 ${Math.min(22, Math.round(slotH * 0.15))}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText("抽取中...", sx + slotW / 2, sy + slotH * 0.72);
+    } else {
+      // === LEFT BLOCK: index + name + title + badge ===
+      const rowPadL = 14;
+      const lInnerX = sx + 14 + rowPadL;
 
       ctx.textAlign = "left";
-      ctx.fillStyle = "rgba(255,255,255,0.45)";
-      ctx.font = `500 ${Math.round(H * 0.012)}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText("普攻", skillLabelX, skill1Y);
-      ctx.fillText("大招", skillLabelX, skill2Y);
+      ctx.textBaseline = "top";
 
-      ctx.textAlign = "right";
+      // Index label
+      ctx.fillStyle = "rgba(255,255,255,0.38)";
+      ctx.font = `500 ${Math.min(20, Math.round(slotH * 0.12))}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(indexLabel, lInnerX, sy + Math.round(slotH * 0.08));
+
+      // Name
       ctx.fillStyle = "#fff7eb";
-      ctx.font = `600 ${Math.round(H * 0.012)}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(character.basicAttack?.name ?? "—", skillValueX, skill1Y);
-      ctx.fillText(character.ultimate?.name ?? "—", skillValueX, skill2Y);
+      ctx.font = `700 ${Math.min(38, Math.round(slotH * 0.23))}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(name, lInnerX, sy + Math.round(slotH * 0.25));
 
-      ctx.textAlign = "center";
+      // Title
+      if (title) {
+        ctx.fillStyle = "#f3d2a2";
+        ctx.font = `500 ${Math.min(22, Math.round(slotH * 0.14))}px "Microsoft YaHei UI", sans-serif`;
+        ctx.fillText(title, lInnerX, sy + Math.round(slotH * 0.52));
+      }
 
-      // Divider before stats
-      const div2Y = slotTop + Math.round(H * 0.198);
-      ctx.strokeStyle = "rgba(255,255,255,0.1)";
+      // Badge
+      ctx.fillStyle = "rgba(243,210,162,0.68)";
+      ctx.font = `600 ${Math.min(18, Math.round(slotH * 0.11))}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText("✓ 已确定", lInnerX, sy + Math.round(slotH * 0.78));
+
+      // Vertical divider
+      const divX = sx + leftBlockW;
+      ctx.strokeStyle = "rgba(255,255,255,0.10)";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(x + pad, div2Y);
-      ctx.lineTo(x + slotW - pad, div2Y);
+      ctx.moveTo(divX, sy + Math.round(slotH * 0.08));
+      ctx.lineTo(divX, sy + Math.round(slotH * 0.92));
       ctx.stroke();
 
-      // Stats — 2 columns, 3 rows
-      const stats = character.stats;
-      const statItems = [
-        ["HP", stats.maxHp],
-        ["速度", stats.speed],
-        ["精元", stats.maxEssence],
-        ["索敌", stats.attackRange],
-        ["体型", stats.radius],
-      ];
-      const colW = (slotW - pad * 2) / 2;
-      const statStartY = slotTop + Math.round(H * 0.225);
-      const statLineH = Math.round(H * 0.028);
+      if (character) {
+        // === RIGHT BLOCK: skills + stats ===
+        const rx = divX + 20;
+        const rInnerW = slotW - leftBlockW - 28;
+        const skillFontSize = Math.min(20, Math.round(slotH * 0.12));
+        const valFontSize = Math.min(20, Math.round(slotH * 0.12));
 
-      statItems.forEach(([label, value], si) => {
-        const col = si % 2;
-        const row = Math.floor(si / 2);
-        const statCx = x + pad + col * colW + colW / 2;
-        const statY = statStartY + row * statLineH;
+        // Skills
+        [["普攻", character.basicAttack?.name ?? "—"], ["大招", character.ultimate?.name ?? "—"]].forEach(([label, val], si) => {
+          const skillY = sy + Math.round(slotH * 0.12) + si * Math.round(slotH * 0.22);
+          ctx.textAlign = "left";
+          ctx.textBaseline = "top";
+          ctx.fillStyle = "rgba(255,255,255,0.42)";
+          ctx.font = `500 ${skillFontSize}px "Microsoft YaHei UI", sans-serif`;
+          ctx.fillText(label, rx, skillY);
+          ctx.textAlign = "right";
+          ctx.fillStyle = "#fff7eb";
+          ctx.font = `600 ${valFontSize}px "Microsoft YaHei UI", sans-serif`;
+          ctx.fillText(val, rx + rInnerW, skillY);
+        });
 
-        ctx.fillStyle = "rgba(255,255,255,0.4)";
-        ctx.font = `500 ${Math.round(H * 0.011)}px "Microsoft YaHei UI", sans-serif`;
-        ctx.fillText(label, statCx, statY);
+        // Horizontal divider
+        const hdivY = sy + Math.round(slotH * 0.52);
+        ctx.strokeStyle = "rgba(255,255,255,0.08)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(rx, hdivY);
+        ctx.lineTo(rx + rInnerW, hdivY);
+        ctx.stroke();
 
-        ctx.fillStyle = "#fff7eb";
-        ctx.font = `700 ${Math.round(H * 0.014)}px "Trebuchet MS", "Microsoft YaHei UI", sans-serif`;
-        ctx.fillText(value, statCx, statY + Math.round(H * 0.016));
-      });
+        // Stats grid: 3 cols
+        const stats = character.stats;
+        const statItems = [
+          ["HP", stats.maxHp],
+          ["速度", stats.speed],
+          ["精元", stats.maxEssence],
+          ["索敜", stats.attackRange],
+          ["体型", stats.radius],
+        ];
+        const cols = 3;
+        const colW = rInnerW / cols;
+        const statStartY = hdivY + 10;
+        const statRowH = Math.round(slotH * 0.22);
+        const lblFont = Math.min(16, Math.round(slotH * 0.10));
+        const valFont = Math.min(22, Math.round(slotH * 0.14));
 
-      // ✓ 已确定 badge at bottom
-      ctx.fillStyle = "rgba(243,210,162,0.75)";
-      ctx.font = `600 ${Math.round(H * 0.013)}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText("✓ 已确定", cx, slotTop + slotH - Math.round(H * 0.022));
-    } else if (!settled) {
-      // Spinning state: just show a faint "抽取中..." below name
-      ctx.fillStyle = "rgba(255,255,255,0.25)";
-      ctx.font = `500 ${Math.round(H * 0.013)}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText("抽取中...", cx, slotTop + slotH * 0.58);
+        statItems.forEach(([label, value], si) => {
+          const col = si % cols;
+          const row = Math.floor(si / cols);
+          const statCx = rx + col * colW + colW / 2;
+          const statY = statStartY + row * statRowH;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "top";
+          ctx.fillStyle = "rgba(255,255,255,0.38)";
+          ctx.font = `500 ${lblFont}px "Microsoft YaHei UI", sans-serif`;
+          ctx.fillText(label, statCx, statY);
+          ctx.fillStyle = "#fff7eb";
+          ctx.font = `700 ${valFont}px "Trebuchet MS", "Microsoft YaHei UI", sans-serif`;
+          ctx.fillText(value, statCx, statY + lblFont + 4);
+        });
+      }
     }
   });
 
   ctx.restore();
 }
-
 function startDrawRecordingLoop() {
   if (!recordingState.active) return;
 
@@ -1069,8 +1090,13 @@ function startCanvasRecording() {
   }
 
   try {
+    const renderCanvas = document.createElement("canvas");
+    renderCanvas.width = 1080;
+    renderCanvas.height = 1920;
+    const renderCtx = renderCanvas.getContext("2d");
+
     const mimeType = getRecordingMimeType();
-    const stream = canvas.captureStream(RECORDING_FPS);
+    const stream = renderCanvas.captureStream(RECORDING_FPS);
     const options = {
       videoBitsPerSecond: RECORDING_BITS_PER_SECOND,
     };
@@ -1086,8 +1112,8 @@ function startCanvasRecording() {
     recordingState.stream = stream;
     recordingState.chunks = [];
     recordingState.mimeType = mimeType || "video/webm";
-    recordingState.renderCanvas = null;
-    recordingState.renderCtx = null;
+    recordingState.renderCanvas = renderCanvas;
+    recordingState.renderCtx = renderCtx;
     updateRecordButton();
 
     recorder.addEventListener("dataavailable", (event) => {

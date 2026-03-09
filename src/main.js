@@ -1,4 +1,4 @@
-import {
+﻿import {
   CHARACTER_LIBRARY,
   getCharacterById,
   resetCharacterValues,
@@ -22,7 +22,11 @@ const closeRosterButton = document.getElementById("close-roster-button");
 const rosterModal = document.getElementById("roster-modal");
 const edgeSpikesToggle = document.getElementById("edge-spikes-toggle");
 const duelTimeInput = document.getElementById("duel-time-input");
+const drawCountInput = document.getElementById("draw-count-input");
 const overlay = document.getElementById("overlay");
+const drawStage = document.getElementById("draw-stage");
+const drawStageSummaryElement = document.getElementById("draw-stage-summary");
+const drawStageSlotsElement = document.getElementById("draw-stage-slots");
 const scoreboard = document.getElementById("scoreboard");
 const feed = document.getElementById("feed");
 const hudTimer = document.getElementById("hud-timer");
@@ -30,15 +34,21 @@ const hudPhase = document.getElementById("hud-phase");
 const canvas = document.getElementById("arena-canvas");
 
 const DEFAULT_DUEL_TIME = 45;
+const DEFAULT_DRAW_COUNT = Math.max(2, Math.min(4, CHARACTER_LIBRARY.length));
 const RECORDING_FPS = 60;
 const RECORDING_BITS_PER_SECOND = 24_000_000;
 const RECORDING_END_HOLD_MS = 2200;
+const DRAW_SPIN_INTERVAL_MS = 90;
+const DRAW_SETTLE_BASE_MS = 1200;
+const DRAW_SETTLE_STEP_MS = 320;
+const DRAW_END_HOLD_MS = 650;
 
 let selectedId = CHARACTER_LIBRARY[0].id;
 let selectedRosterIds = new Set(CHARACTER_LIBRARY.map((character) => character.id));
 const matchSettings = {
   includeEdgeHazards: true,
   duelTime: DEFAULT_DUEL_TIME,
+  drawCount: DEFAULT_DRAW_COUNT,
 };
 const recordingState = {
   active: false,
@@ -51,6 +61,12 @@ const recordingState = {
   latestSnapshot: null,
   stopTimeoutId: null,
   stopAnimationFrameId: null,
+  drawLoopId: null,
+};
+const drawState = {
+  active: false,
+  intervalIds: [],
+  timeoutIds: [],
 };
 const battleFeedItems = [];
 
@@ -93,18 +109,53 @@ function getRosterIds() {
 }
 
 function syncRosterSelection() {
-  if (!selectedRosterIds.has(selectedId)) {
-    selectedRosterIds.add(selectedId);
+  return;
+}
+
+function sanitizeDrawCount(value, eligibleCount = getRosterIds().length) {
+  const rounded = Math.round(value || DEFAULT_DRAW_COUNT);
+  if (eligibleCount < 2) {
+    return Math.max(2, rounded);
   }
+  return Math.max(2, Math.min(eligibleCount, rounded));
+}
+
+function canStartMatch() {
+  const eligibleCount = getRosterIds().length;
+  return eligibleCount >= 2 && matchSettings.drawCount >= 2 && matchSettings.drawCount <= eligibleCount;
+}
+
+function syncDrawCountInput() {
+  const eligibleCount = getRosterIds().length;
+  matchSettings.drawCount = sanitizeDrawCount(matchSettings.drawCount, eligibleCount);
+  drawCountInput.min = "2";
+  drawCountInput.max = `${Math.max(2, eligibleCount)}`;
+  drawCountInput.value = `${matchSettings.drawCount}`;
 }
 
 function updateRosterStatus() {
-  const count = getRosterIds().length;
-  const text = `已选择 ${count} 名参战角色`;
+  const eligibleCount = getRosterIds().length;
+  const drawCount = Math.min(matchSettings.drawCount, Math.max(eligibleCount, 0));
+
+  let text = `已选择 ${eligibleCount} 名参与抽取角色`;
+  if (eligibleCount >= 2) {
+    text += `，将随机抽取 ${drawCount} 名进入对战`;
+  } else {
+    text += "，至少需要 2 名角色才能开始";
+  }
+
   rosterStatusElement.textContent = text;
-  modalRosterStatusElement.textContent = `${text}，点击卡片可切换编辑对象。`;
-  startButton.disabled = count < 2;
-  startButton.textContent = count < 2 ? "至少选择 2 名角色" : "开始游戏";
+  modalRosterStatusElement.textContent =
+    `${text}。点击卡片切换编辑对象，只有标记为“参与抽取”的角色才会进入抽签池。`;
+
+  if (drawState.active) {
+    startButton.disabled = true;
+    startButton.textContent = "抽取中...";
+    return;
+  }
+
+  startButton.disabled = !canStartMatch() || recordingState.active;
+  startButton.textContent = canStartMatch() ? "开始抽取并开战" : "至少选择 2 名角色";
 }
 
 function collectOverrides(character) {
@@ -151,43 +202,41 @@ function renderRoster() {
           </div>
         </div>
         <div class="card-controls">
-          <span class="card-toggle${selected ? " active" : " ghost"}">${selected ? "正在编辑" : "点此编辑"}</span>
-          <span class="card-toggle${included ? " active" : " ghost"}">${included ? "参战" : "待命"}</span>
+          <span class="card-toggle${selected ? " active" : " ghost"}">${selected ? "姝ｅ湪缂栬緫" : "鐐规缂栬緫"}</span>
+          <span class="card-toggle${included ? " active" : " ghost"}">${included ? "鍙傛垬" : "寰呭懡"}</span>
         </div>
       </div>
       <p class="card-desc">${character.description}</p>
       <div class="tag-row">${tags}</div>
       <div class="stats-row">
         <span class="stat">HP ${character.stats.maxHp}</span>
-        <span class="stat">速度 ${character.stats.speed}</span>
-        <span class="stat">精元 ${character.stats.maxEssence}</span>
-        <span class="stat">索敌 ${character.stats.attackRange}</span>
+        <span class="stat">閫熷害 ${character.stats.speed}</span>
+        <span class="stat">绮惧厓 ${character.stats.maxEssence}</span>
+        <span class="stat">绱㈡晫 ${character.stats.attackRange}</span>
       </div>
     `;
 
     card.addEventListener("click", () => {
       selectedId = character.id;
-      syncRosterSelection();
       renderRoster();
       renderEditor();
     });
 
     const toggles = card.querySelectorAll(".card-toggle");
+    toggles[0].textContent = selected ? "正在编辑" : "点击编辑";
+    toggles[1].textContent = included ? "参与抽取" : "不参与抽取";
     toggles[0].addEventListener("click", (event) => {
       event.stopPropagation();
       selectedId = character.id;
-      syncRosterSelection();
       renderRoster();
       renderEditor();
     });
 
     toggles[1].addEventListener("click", (event) => {
       event.stopPropagation();
-      if (character.id === selectedId) {
-        selectedRosterIds.add(character.id);
-      } else if (included && getRosterIds().length > 2) {
+      if (included) {
         selectedRosterIds.delete(character.id);
-      } else if (!included) {
+      } else {
         selectedRosterIds.add(character.id);
       }
       renderRoster();
@@ -196,6 +245,7 @@ function renderRoster() {
     rosterElement.appendChild(card);
   });
 
+  syncDrawCountInput();
   updateRosterStatus();
   updateRecordButton();
 }
@@ -203,13 +253,13 @@ function renderRoster() {
 function renderEditor() {
   const character = getCharacterById(selectedId);
   if (!character) {
-    editorElement.innerHTML = '<p class="editor-empty">未找到角色配置。</p>';
+    editorElement.innerHTML = '<p class="editor-empty">鏈壘鍒拌鑹查厤缃€?/p>';
     return;
   }
 
   editorElement.innerHTML = `
     <section class="editor-section">
-      <h3>${character.name} · ${character.title}</h3>
+      <h3>${character.name} 路 ${character.title}</h3>
       <p class="editor-note">${character.description}</p>
     </section>
   `;
@@ -288,11 +338,11 @@ function renderScoreboard(snapshot) {
       const essenceRatio = actor.maxEssence ? actor.essence / actor.maxEssence : 0;
       const title = character?.title ?? "";
       const skillText = [
-        character?.basicAttack?.name ? `平A ${character.basicAttack.name}` : "",
-        character?.ultimate?.name ? `大招 ${character.ultimate.name}` : "",
+        character?.basicAttack?.name ? `骞矨 ${character.basicAttack.name}` : "",
+        character?.ultimate?.name ? `澶ф嫑 ${character.ultimate.name}` : "",
       ]
         .filter(Boolean)
-        .join(" · ");
+        .join(" 路 ");
 
       return `
         <div class="score-row${actor.isPlayer ? " player" : ""}${actor.alive ? "" : " dead"}">
@@ -301,7 +351,7 @@ function renderScoreboard(snapshot) {
               <strong style="color:${actor.color}">${actor.name}</strong>
               ${title ? `<span class="score-title">${title}</span>` : ""}
             </div>
-            <span class="score-state">${actor.alive ? "存活" : "淘汰"}</span>
+            <span class="score-state">${actor.alive ? "瀛樻椿" : "娣樻卑"}</span>
           </div>
           <div class="hp-bar">
             <div class="hp-fill" style="width:${Math.max(hpRatio, 0) * 100}%"></div>
@@ -309,7 +359,7 @@ function renderScoreboard(snapshot) {
           <div class="essence-bar">
             <div class="essence-fill" style="width:${Math.max(essenceRatio, 0) * 100}%"></div>
           </div>
-          <div class="score-meta">HP ${actor.hp}/${actor.maxHp} · 精元 ${actor.essence}/${actor.maxEssence}</div>
+          <div class="score-meta">HP ${actor.hp}/${actor.maxHp} 路 绮惧厓 ${actor.essence}/${actor.maxEssence}</div>
           ${skillText ? `<div class="score-skills">${skillText}</div>` : ""}
         </div>
       `;
@@ -320,14 +370,14 @@ function renderScoreboard(snapshot) {
 function updateHud(snapshot) {
   if (!snapshot) {
     hudTimer.textContent = "0.0s";
-    hudPhase.textContent = `常规阶段 · ${matchSettings.duelTime}s后进入`;
+    hudPhase.textContent = `常规阶段，${matchSettings.duelTime}s 后进入决斗`;
     return;
   }
 
   hudTimer.textContent = `${snapshot.elapsed.toFixed(1)}s`;
   hudPhase.textContent = snapshot.duelTriggered
     ? "决斗时刻"
-    : `常规阶段 · ${snapshot.nextPhaseIn.toFixed(1)}s后进入`;
+    : `常规阶段，${snapshot.nextPhaseIn.toFixed(1)}s 后进入决斗`;
 }
 
 function syncDuelTimeInput() {
@@ -360,13 +410,13 @@ function getHudDisplay(snapshot) {
   if (!snapshot) {
     return {
       timer: "0.0s",
-      phase: `常规阶段 · ${matchSettings.duelTime}s后进入`,
+      phase: `常规阶段，${matchSettings.duelTime}s 后进入决斗`,
     };
   }
 
   return {
     timer: `${snapshot.elapsed.toFixed(1)}s`,
-    phase: snapshot.duelTriggered ? "决斗时刻" : `常规阶段 · ${snapshot.nextPhaseIn.toFixed(1)}s后进入`,
+    phase: snapshot.duelTriggered ? "决斗时刻" : `常规阶段，${snapshot.nextPhaseIn.toFixed(1)}s 后进入决斗`,
   };
 }
 
@@ -424,7 +474,7 @@ function wrapText(ctx, text, maxWidth, maxLines = Infinity) {
 
   if (lines.length === maxLines && current && lines[lines.length - 1] !== current) {
     const truncated = lines[lines.length - 1];
-    lines[lines.length - 1] = truncated.length > 1 ? `${truncated.slice(0, -1)}…` : "…";
+    lines[lines.length - 1] = truncated.length > 1 ? `${truncated.slice(0, -1)}...` : "...";
   }
 
   return lines;
@@ -546,8 +596,8 @@ function renderRecordingFrame(snapshot = recordingState.latestSnapshot) {
     ctx.save();
     ctx.fillStyle = "rgba(255,255,255,0.68)";
     ctx.font = `600 ${Math.round(height * 0.011)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText("计时", statusX, statusY);
-    ctx.fillText("阶段", statusX + statusBlockWidth + gap, statusY);
+    ctx.fillText("璁℃椂", statusX, statusY);
+    ctx.fillText("闃舵", statusX + statusBlockWidth + gap, statusY);
 
     ctx.fillStyle = "#fff7eb";
     ctx.font = `700 ${Math.round(height * 0.018)}px "Trebuchet MS", "Microsoft YaHei UI", sans-serif`;
@@ -572,7 +622,7 @@ function renderRecordingFrame(snapshot = recordingState.latestSnapshot) {
   ctx.save();
   ctx.fillStyle = "#f3d2a2";
   ctx.font = `600 ${Math.round(height * 0.016)}px Georgia, "Microsoft YaHei UI", serif`;
-  ctx.fillText("战斗播报", margin + pad, margin + pad + Math.round(height * 0.004));
+  ctx.fillText("鎴樻枟鎾姤", margin + pad, margin + pad + Math.round(height * 0.004));
 
   const feedTop = margin + pad + Math.round(height * 0.028);
   const itemGap = Math.round(height * 0.009);
@@ -606,8 +656,8 @@ function renderRecordingFrame(snapshot = recordingState.latestSnapshot) {
 
   ctx.fillStyle = "rgba(255,255,255,0.68)";
   ctx.font = `600 ${Math.round(height * 0.011)}px "Microsoft YaHei UI", sans-serif`;
-  ctx.fillText("计时", statusX, statusY);
-  ctx.fillText("阶段", statusX + statusBlockWidth + gap, statusY);
+  ctx.fillText("璁℃椂", statusX, statusY);
+  ctx.fillText("闃舵", statusX + statusBlockWidth + gap, statusY);
 
   ctx.fillStyle = "#fff7eb";
   ctx.font = `700 ${Math.round(height * 0.018)}px "Trebuchet MS", "Microsoft YaHei UI", sans-serif`;
@@ -633,7 +683,7 @@ function renderRecordingFrame(snapshot = recordingState.latestSnapshot) {
 
   ctx.fillStyle = "#f3d2a2";
   ctx.font = `600 ${Math.round(height * 0.016)}px Georgia, "Microsoft YaHei UI", serif`;
-  ctx.fillText("存活列表", scoreX, scoreY);
+  ctx.fillText("瀛樻椿鍒楄〃", scoreX, scoreY);
 
   const rowTop = scorePanelY + pad + Math.round(height * 0.028);
   const rowHeight = Math.round(height * 0.06);
@@ -652,7 +702,7 @@ function renderRecordingFrame(snapshot = recordingState.latestSnapshot) {
     ctx.textAlign = "right";
     ctx.fillStyle = actor.alive ? "#f5efe7" : "rgba(245, 239, 231, 0.55)";
     ctx.font = `600 ${Math.round(height * 0.0105)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(actor.alive ? "存活" : "淘汰", scoreX + scoreInnerWidth - Math.round(width * 0.006), rowY + Math.round(height * 0.018));
+    ctx.fillText(actor.alive ? "瀛樻椿" : "娣樻卑", scoreX + scoreInnerWidth - Math.round(width * 0.006), rowY + Math.round(height * 0.018));
 
     ctx.textAlign = "left";
     ctx.fillStyle = "rgba(255,255,255,0.68)";
@@ -697,7 +747,7 @@ function renderRecordingFrame(snapshot = recordingState.latestSnapshot) {
     ctx.fillStyle = "rgba(255,255,255,0.68)";
     ctx.font = `500 ${Math.round(height * 0.01)}px "Microsoft YaHei UI", sans-serif`;
     ctx.fillText(
-      `HP ${actor.hp}/${actor.maxHp} · 精元 ${actor.essence}/${actor.maxEssence}`,
+      `HP ${actor.hp}/${actor.maxHp} 路 绮惧厓 ${actor.essence}/${actor.maxEssence}`,
       barX,
       rowY + Math.round(height * 0.054),
     );
@@ -744,20 +794,17 @@ function updateRecordButton() {
     return;
   }
 
-  const count = getRosterIds().length;
   const supported = canRecordCanvas();
 
-  startButton.disabled = count < 2 || recordingState.active;
-  recordButton.disabled = recordingState.active ? false : count < 2 || !supported;
-  if (recordingState.active) {
-    recordButton.textContent = "暂停录制";
+  if (drawState.active) {
+    recordButton.disabled = true;
+    recordButton.textContent = "抽取中...";
     return;
   }
 
-  recordButton.textContent = supported ? "录制对局" : "无法录制";
-  return;
+  recordButton.disabled = recordingState.active ? false : !canStartMatch() || !supported;
   if (recordingState.active) {
-    recordButton.textContent = "录制中...";
+    recordButton.textContent = "停止录制";
     return;
   }
 
@@ -787,7 +834,116 @@ function clearScheduledRecordingStop() {
   }
 }
 
+function stopDrawRecordingLoop() {
+  if (recordingState.drawLoopId != null) {
+    cancelAnimationFrame(recordingState.drawLoopId);
+    recordingState.drawLoopId = null;
+  }
+}
+
+function renderDrawOnCanvas() {
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+  const slots = [...drawStageSlotsElement.querySelectorAll(".draw-slot")];
+
+  ctx.save();
+  ctx.fillStyle = "rgba(6, 6, 12, 0.96)";
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+
+  ctx.fillStyle = "#f3d2a2";
+  ctx.font = `600 ${Math.round(H * 0.019)}px "Microsoft YaHei UI", serif`;
+  ctx.fillText("Draft", W / 2, H * 0.26);
+
+  ctx.fillStyle = "#fff7eb";
+  ctx.font = `700 ${Math.round(H * 0.038)}px Georgia, "Microsoft YaHei UI", serif`;
+  ctx.fillText("随机抽取本局参战选手", W / 2, H * 0.335);
+
+  const summaryText = drawStageSummaryElement.textContent ?? "";
+  if (summaryText) {
+    ctx.fillStyle = "rgba(255,255,255,0.62)";
+    ctx.font = `500 ${Math.round(H * 0.017)}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(summaryText, W / 2, H * 0.395);
+  }
+
+  const slotCount = slots.length || 1;
+  const slotW = Math.round(W * 0.165);
+  const slotH = Math.round(H * 0.26);
+  const slotGap = Math.round(W * 0.022);
+  const totalW = slotCount * slotW + (slotCount - 1) * slotGap;
+  const startX = (W - totalW) / 2;
+  const slotTop = H * 0.46;
+  const r = Math.round(W * 0.007);
+
+  slots.forEach((slotEl, i) => {
+    const settled = slotEl.classList.contains("settled");
+    const name = slotEl.querySelector(".draw-slot-label")?.textContent ?? "---";
+    const title = slotEl.querySelector(".draw-slot-title")?.textContent ?? "";
+    const indexLabel = slotEl.querySelector(".draw-slot-index")?.textContent ?? `Slot ${i + 1}`;
+    const accentColor = slotEl.style.getPropertyValue("--slot-accent") || "rgba(255,255,255,0.15)";
+
+    const x = startX + i * (slotW + slotGap);
+
+    ctx.beginPath();
+    const rx = Math.min(r, slotW / 2, slotH / 2);
+    ctx.moveTo(x + rx, slotTop);
+    ctx.arcTo(x + slotW, slotTop, x + slotW, slotTop + slotH, rx);
+    ctx.arcTo(x + slotW, slotTop + slotH, x, slotTop + slotH, rx);
+    ctx.arcTo(x, slotTop + slotH, x, slotTop, rx);
+    ctx.arcTo(x, slotTop, x + slotW, slotTop, rx);
+    ctx.closePath();
+    ctx.fillStyle = settled ? `rgba(35,30,15,0.95)` : "rgba(16,16,28,0.95)";
+    ctx.fill();
+    ctx.strokeStyle = settled ? accentColor || "rgba(243,210,162,0.55)" : "rgba(255,255,255,0.12)";
+    ctx.lineWidth = settled ? 3 : 1.5;
+    ctx.stroke();
+
+    const cx = x + slotW / 2;
+
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.font = `500 ${Math.round(H * 0.013)}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(indexLabel, cx, slotTop + Math.round(H * 0.042));
+
+    ctx.fillStyle = settled ? "#fff7eb" : "rgba(200,200,200,0.55)";
+    ctx.font = `${settled ? "700" : "500"} ${Math.round(H * 0.028)}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(name, cx, slotTop + slotH * 0.52);
+
+    if (title) {
+      ctx.fillStyle = settled ? "#f3d2a2" : "rgba(255,255,255,0.38)";
+      ctx.font = `500 ${Math.round(H * 0.015)}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(title, cx, slotTop + slotH * 0.52 + Math.round(H * 0.032));
+    }
+
+    if (settled) {
+      ctx.fillStyle = "rgba(243,210,162,0.7)";
+      ctx.font = `600 ${Math.round(H * 0.013)}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText("✓ 已确定", cx, slotTop + slotH - Math.round(H * 0.03));
+    }
+  });
+
+  ctx.restore();
+}
+
+function startDrawRecordingLoop() {
+  if (!recordingState.active) return;
+
+  const loop = () => {
+    if (!recordingState.active || drawStage.classList.contains("hidden")) {
+      recordingState.drawLoopId = null;
+      return;
+    }
+    renderDrawOnCanvas();
+    recordingState.drawLoopId = requestAnimationFrame(loop);
+  };
+
+  recordingState.drawLoopId = requestAnimationFrame(loop);
+}
+
 function resetRecordingState() {
+  stopDrawRecordingLoop();
   clearScheduledRecordingStop();
   recordingState.active = false;
   recordingState.recorder = null;
@@ -920,13 +1076,127 @@ function stopRecordedMatch() {
   stopCanvasRecording();
 }
 
-function startMatch({ record = false } = {}) {
-  if (recordingState.active) {
+function clearDrawTimers() {
+  drawState.intervalIds.forEach((id) => clearInterval(id));
+  drawState.timeoutIds.forEach((id) => clearTimeout(id));
+  drawState.intervalIds = [];
+  drawState.timeoutIds = [];
+}
+
+function showDrawStage() {
+  drawStage.classList.remove("hidden");
+}
+
+function hideDrawStage() {
+  drawStage.classList.add("hidden");
+  drawStageSummaryElement.textContent = "";
+  drawStageSlotsElement.innerHTML = "";
+}
+
+function sampleDrawRoster(poolIds, count) {
+  const remaining = [...poolIds];
+  const chosen = [];
+
+  while (chosen.length < count && remaining.length) {
+    const index = Math.floor(Math.random() * remaining.length);
+    chosen.push(remaining.splice(index, 1)[0]);
+  }
+
+  return chosen;
+}
+
+function createDrawSlot(slotIndex) {
+  const element = document.createElement("article");
+  element.className = "draw-slot spinning";
+  element.innerHTML = `
+    <span class="draw-slot-index">Slot ${slotIndex + 1}</span>
+    <strong class="draw-slot-label">---</strong>
+    <span class="draw-slot-title">等待抽取</span>
+  `;
+
+  return {
+    element,
+    nameElement: element.querySelector(".draw-slot-label"),
+    titleElement: element.querySelector(".draw-slot-title"),
+  };
+}
+
+function updateDrawSlot(slot, character, settled = false) {
+  slot.element.style.setProperty("--slot-accent", `${character.color}66`);
+  slot.element.classList.toggle("spinning", !settled);
+  slot.element.classList.toggle("settled", settled);
+  slot.nameElement.textContent = character.name;
+  slot.titleElement.textContent = character.title;
+}
+
+function runDrawSequence(poolIds, drawCount) {
+  const chosenIds = sampleDrawRoster(poolIds, drawCount);
+  const slotViews = [];
+
+  clearDrawTimers();
+  drawState.active = true;
+  overlay.classList.add("hidden");
+  overlay.innerHTML = "";
+  showDrawStage();
+  startDrawRecordingLoop();
+  drawStageSummaryElement.textContent = `从 ${poolIds.length} 名候选中随机抽取 ${drawCount} 名角色进入本局。`;
+  drawStageSlotsElement.innerHTML = "";
+
+  chosenIds.forEach((_, index) => {
+    const slot = createDrawSlot(index);
+    slotViews.push(slot);
+    drawStageSlotsElement.appendChild(slot.element);
+  });
+
+  updateRosterStatus();
+  updateRecordButton();
+
+  return new Promise((resolve) => {
+    slotViews.forEach((slot, index) => {
+      const intervalId = window.setInterval(() => {
+        const randomId = poolIds[Math.floor(Math.random() * poolIds.length)];
+        const randomCharacter = getCharacterById(randomId);
+        if (randomCharacter) {
+          updateDrawSlot(slot, randomCharacter, false);
+        }
+      }, DRAW_SPIN_INTERVAL_MS);
+      drawState.intervalIds.push(intervalId);
+
+      const timeoutId = window.setTimeout(() => {
+        clearInterval(intervalId);
+        const finalCharacter = getCharacterById(chosenIds[index]);
+        if (finalCharacter) {
+          updateDrawSlot(slot, finalCharacter, true);
+        }
+
+        if (index === chosenIds.length - 1) {
+          drawStageSummaryElement.textContent =
+            `本局参战：${chosenIds.map((id) => getCharacterById(id)?.name ?? id).join("、")}`;
+        }
+      }, DRAW_SETTLE_BASE_MS + index * DRAW_SETTLE_STEP_MS);
+      drawState.timeoutIds.push(timeoutId);
+    });
+
+    const doneTimeoutId = window.setTimeout(() => {
+      stopDrawRecordingLoop();
+      drawState.active = false;
+      clearDrawTimers();
+      updateRosterStatus();
+      updateRecordButton();
+      resolve(chosenIds);
+    }, DRAW_SETTLE_BASE_MS + chosenIds.length * DRAW_SETTLE_STEP_MS + DRAW_END_HOLD_MS);
+    drawState.timeoutIds.push(doneTimeoutId);
+  });
+}
+
+async function startMatch({ record = false } = {}) {
+  if (recordingState.active || drawState.active) {
     return;
   }
 
-  const rosterIds = getRosterIds();
-  if (rosterIds.length < 2) {
+  const poolIds = getRosterIds();
+  const drawCount = sanitizeDrawCount(matchSettings.drawCount, poolIds.length);
+  if (poolIds.length < 2 || drawCount < 2 || drawCount > poolIds.length) {
     return;
   }
 
@@ -934,8 +1204,13 @@ function startMatch({ record = false } = {}) {
     return;
   }
 
+  game.stop();
   closeRosterModal();
-  game.start(selectedId, rosterIds, {
+  const drawnIds = await runDrawSequence(poolIds, drawCount);
+  const focusId = drawnIds.includes(selectedId) ? selectedId : drawnIds[0];
+
+  hideDrawStage();
+  game.start(focusId, drawnIds, {
     includeEdgeHazards: matchSettings.includeEdgeHazards,
     duelTime: matchSettings.duelTime,
   });
@@ -952,6 +1227,7 @@ const game = new ArenaGame(canvas, {
     renderRecordingFrame(snapshot);
   },
   onMatchStart(snapshot) {
+    hideDrawStage();
     overlay.classList.add("hidden");
     overlay.innerHTML = "";
     battleFeedItems.length = 0;
@@ -965,49 +1241,17 @@ const game = new ArenaGame(canvas, {
     const winner = snapshot.actors.find((actor) => actor.id === snapshot.winnerId);
     recordingState.latestSnapshot = snapshot;
     overlay.classList.remove("hidden");
-    if (winner) {
-      overlay.innerHTML = `
-        <p class="overlay-eyebrow">Victory</p>
-        <h2>${winner.name}获得最终胜利</h2>
-      `;
-      overlay.querySelector("h2").textContent = `${winner.name}获得最终胜利`;
-      overlay.querySelector("h2").textContent = `${winner.name}获得最终胜利`;
-      renderRecordingFrame(snapshot);
-      scheduleCanvasRecordingStop();
-      return;
-    }
-
-    overlay.innerHTML = `
-      <p class="overlay-eyebrow">Draw</p>
-      <h2>本局同归于尽</h2>
-    `;
-    overlay.querySelector("h2").textContent = "本局同归于尽";
-    overlay.querySelector("h2").textContent = "本局同归于尽";
-    renderRecordingFrame(snapshot);
-    scheduleCanvasRecordingStop();
-    return;
     overlay.innerHTML = winner
       ? `
         <p class="overlay-eyebrow">Victory</p>
-        <h2>${winner.name} 获胜</h2>
-        <p>当前对局使用你选择的参战名单。你可以继续调整角色和参战阵容，再重新开局测试。</p>
+        <h2>${winner.name} 获得最终胜利</h2>
       `
       : `
         <p class="overlay-eyebrow">Draw</p>
         <h2>本局同归于尽</h2>
-        <p>所有参战角色同时出局。你可以继续调整角色参数、参战阵容或阶段时间。</p>
       `;
-    if (winner) {
-      overlay.innerHTML = `
-        <p class="overlay-eyebrow">Victory</p>
-        <h2>${winner.name}获得最终胜利</h2>
-      `;
-      return;
-      overlay.innerHTML = `
-        <p class="overlay-eyebrow">Victory</p>
-        <h2>${winner.name} 鑾疯儨</h2>
-      `;
-    }
+    renderRecordingFrame(snapshot);
+    scheduleCanvasRecordingStop();
   },
 });
 
@@ -1038,10 +1282,6 @@ selectAllButton.addEventListener("click", () => {
 
 clearRosterButton.addEventListener("click", () => {
   selectedRosterIds = new Set([selectedId]);
-  const fallback = CHARACTER_LIBRARY.find((character) => character.id !== selectedId);
-  if (fallback) {
-    selectedRosterIds.add(fallback.id);
-  }
   renderRoster();
 });
 
@@ -1078,6 +1318,13 @@ duelTimeInput.addEventListener("change", () => {
   }
 });
 
+drawCountInput.addEventListener("change", () => {
+  matchSettings.drawCount = sanitizeDrawCount(Number(drawCountInput.value));
+  syncDrawCountInput();
+  updateRosterStatus();
+  updateRecordButton();
+});
+
 async function initDb() {
   const allOverrides = await loadAllOverrides();
   let hasChanges = false;
@@ -1097,5 +1344,7 @@ renderRoster();
 renderEditor();
 renderScoreboard(null);
 syncDuelTimeInput();
+syncDrawCountInput();
 updateHud(null);
 initDb();
+

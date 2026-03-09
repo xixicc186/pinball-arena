@@ -870,13 +870,14 @@ function renderDrawOnCanvas() {
   }
 
   const slotCount = slots.length || 1;
-  const slotW = Math.round(W * 0.165);
-  const slotH = Math.round(H * 0.26);
+  const slotW = Math.round(W * 0.175);
+  const slotH = Math.round(H * 0.42);
   const slotGap = Math.round(W * 0.022);
   const totalW = slotCount * slotW + (slotCount - 1) * slotGap;
   const startX = (W - totalW) / 2;
-  const slotTop = H * 0.46;
+  const slotTop = H * 0.44;
   const r = Math.round(W * 0.007);
+  const pad = Math.round(W * 0.009);
 
   slots.forEach((slotEl, i) => {
     const settled = slotEl.classList.contains("settled");
@@ -884,9 +885,12 @@ function renderDrawOnCanvas() {
     const title = slotEl.querySelector(".draw-slot-title")?.textContent ?? "";
     const indexLabel = slotEl.querySelector(".draw-slot-index")?.textContent ?? `Slot ${i + 1}`;
     const accentColor = slotEl.style.getPropertyValue("--slot-accent") || "rgba(255,255,255,0.15)";
+    const character = settled ? CHARACTER_LIBRARY.find((c) => c.name === name) : null;
 
     const x = startX + i * (slotW + slotGap);
+    const cx = x + slotW / 2;
 
+    // Panel background
     ctx.beginPath();
     const rx = Math.min(r, slotW / 2, slotH / 2);
     ctx.moveTo(x + rx, slotTop);
@@ -895,32 +899,105 @@ function renderDrawOnCanvas() {
     ctx.arcTo(x, slotTop + slotH, x, slotTop, rx);
     ctx.arcTo(x, slotTop, x + slotW, slotTop, rx);
     ctx.closePath();
-    ctx.fillStyle = settled ? `rgba(35,30,15,0.95)` : "rgba(16,16,28,0.95)";
+    ctx.fillStyle = settled ? "rgba(30,25,10,0.96)" : "rgba(16,16,28,0.95)";
     ctx.fill();
     ctx.strokeStyle = settled ? accentColor || "rgba(243,210,162,0.55)" : "rgba(255,255,255,0.12)";
     ctx.lineWidth = settled ? 3 : 1.5;
     ctx.stroke();
 
-    const cx = x + slotW / 2;
-
-    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    // Slot index label
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
     ctx.font = `500 ${Math.round(H * 0.013)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(indexLabel, cx, slotTop + Math.round(H * 0.042));
+    ctx.fillText(indexLabel, cx, slotTop + Math.round(H * 0.038));
 
+    // Character name (smaller than before)
     ctx.fillStyle = settled ? "#fff7eb" : "rgba(200,200,200,0.55)";
-    ctx.font = `${settled ? "700" : "500"} ${Math.round(H * 0.028)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(name, cx, slotTop + slotH * 0.52);
+    ctx.font = `${settled ? "700" : "500"} ${Math.round(H * 0.022)}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(name, cx, slotTop + Math.round(H * 0.088));
 
+    // Title/class
     if (title) {
-      ctx.fillStyle = settled ? "#f3d2a2" : "rgba(255,255,255,0.38)";
-      ctx.font = `500 ${Math.round(H * 0.015)}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(title, cx, slotTop + slotH * 0.52 + Math.round(H * 0.032));
+      ctx.fillStyle = settled ? "#f3d2a2" : "rgba(255,255,255,0.35)";
+      ctx.font = `500 ${Math.round(H * 0.014)}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(title, cx, slotTop + Math.round(H * 0.112));
     }
 
-    if (settled) {
-      ctx.fillStyle = "rgba(243,210,162,0.7)";
+    if (settled && character) {
+      // Divider after name block
+      const div1Y = slotTop + Math.round(H * 0.132);
+      ctx.strokeStyle = "rgba(255,255,255,0.1)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + pad, div1Y);
+      ctx.lineTo(x + slotW - pad, div1Y);
+      ctx.stroke();
+
+      // Skills
+      const skillLabelX = x + pad + Math.round(W * 0.004);
+      const skillValueX = x + slotW - pad - Math.round(W * 0.004);
+      const skill1Y = slotTop + Math.round(H * 0.158);
+      const skill2Y = slotTop + Math.round(H * 0.182);
+
+      ctx.textAlign = "left";
+      ctx.fillStyle = "rgba(255,255,255,0.45)";
+      ctx.font = `500 ${Math.round(H * 0.012)}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText("普攻", skillLabelX, skill1Y);
+      ctx.fillText("大招", skillLabelX, skill2Y);
+
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#fff7eb";
+      ctx.font = `600 ${Math.round(H * 0.012)}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(character.basicAttack?.name ?? "—", skillValueX, skill1Y);
+      ctx.fillText(character.ultimate?.name ?? "—", skillValueX, skill2Y);
+
+      ctx.textAlign = "center";
+
+      // Divider before stats
+      const div2Y = slotTop + Math.round(H * 0.198);
+      ctx.strokeStyle = "rgba(255,255,255,0.1)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + pad, div2Y);
+      ctx.lineTo(x + slotW - pad, div2Y);
+      ctx.stroke();
+
+      // Stats — 2 columns, 3 rows
+      const stats = character.stats;
+      const statItems = [
+        ["HP", stats.maxHp],
+        ["速度", stats.speed],
+        ["精元", stats.maxEssence],
+        ["索敌", stats.attackRange],
+        ["体型", stats.radius],
+      ];
+      const colW = (slotW - pad * 2) / 2;
+      const statStartY = slotTop + Math.round(H * 0.225);
+      const statLineH = Math.round(H * 0.028);
+
+      statItems.forEach(([label, value], si) => {
+        const col = si % 2;
+        const row = Math.floor(si / 2);
+        const statCx = x + pad + col * colW + colW / 2;
+        const statY = statStartY + row * statLineH;
+
+        ctx.fillStyle = "rgba(255,255,255,0.4)";
+        ctx.font = `500 ${Math.round(H * 0.011)}px "Microsoft YaHei UI", sans-serif`;
+        ctx.fillText(label, statCx, statY);
+
+        ctx.fillStyle = "#fff7eb";
+        ctx.font = `700 ${Math.round(H * 0.014)}px "Trebuchet MS", "Microsoft YaHei UI", sans-serif`;
+        ctx.fillText(value, statCx, statY + Math.round(H * 0.016));
+      });
+
+      // ✓ 已确定 badge at bottom
+      ctx.fillStyle = "rgba(243,210,162,0.75)";
       ctx.font = `600 ${Math.round(H * 0.013)}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText("✓ 已确定", cx, slotTop + slotH - Math.round(H * 0.03));
+      ctx.fillText("✓ 已确定", cx, slotTop + slotH - Math.round(H * 0.022));
+    } else if (!settled) {
+      // Spinning state: just show a faint "抽取中..." below name
+      ctx.fillStyle = "rgba(255,255,255,0.25)";
+      ctx.font = `500 ${Math.round(H * 0.013)}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText("抽取中...", cx, slotTop + slotH * 0.58);
     }
   });
 

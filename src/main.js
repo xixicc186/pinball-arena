@@ -1215,12 +1215,53 @@ function createDrawSlot(slotIndex) {
     <span class="draw-slot-index">Slot ${slotIndex + 1}</span>
     <strong class="draw-slot-label">---</strong>
     <span class="draw-slot-title">等待抽取</span>
+    <div class="draw-slot-details">
+      <div class="draw-slot-skills">
+        <div class="draw-slot-skill">
+          <span class="draw-slot-skill-label">普攻</span>
+          <span class="draw-slot-skill-name draw-slot-basic-name">—</span>
+        </div>
+        <div class="draw-slot-skill">
+          <span class="draw-slot-skill-label">大招</span>
+          <span class="draw-slot-skill-name draw-slot-ult-name">—</span>
+        </div>
+      </div>
+      <div class="draw-slot-stats">
+        <div class="draw-slot-stat">
+          <span class="draw-slot-stat-label">HP</span>
+          <span class="draw-slot-stat-value draw-slot-stat-hp">—</span>
+        </div>
+        <div class="draw-slot-stat">
+          <span class="draw-slot-stat-label">速度</span>
+          <span class="draw-slot-stat-value draw-slot-stat-speed">—</span>
+        </div>
+        <div class="draw-slot-stat">
+          <span class="draw-slot-stat-label">精元</span>
+          <span class="draw-slot-stat-value draw-slot-stat-essence">—</span>
+        </div>
+        <div class="draw-slot-stat">
+          <span class="draw-slot-stat-label">索敌</span>
+          <span class="draw-slot-stat-value draw-slot-stat-range">—</span>
+        </div>
+        <div class="draw-slot-stat">
+          <span class="draw-slot-stat-label">体型</span>
+          <span class="draw-slot-stat-value draw-slot-stat-radius">—</span>
+        </div>
+      </div>
+    </div>
   `;
 
   return {
     element,
     nameElement: element.querySelector(".draw-slot-label"),
     titleElement: element.querySelector(".draw-slot-title"),
+    basicNameElement: element.querySelector(".draw-slot-basic-name"),
+    ultNameElement: element.querySelector(".draw-slot-ult-name"),
+    statHpElement: element.querySelector(".draw-slot-stat-hp"),
+    statSpeedElement: element.querySelector(".draw-slot-stat-speed"),
+    statEssenceElement: element.querySelector(".draw-slot-stat-essence"),
+    statRangeElement: element.querySelector(".draw-slot-stat-range"),
+    statRadiusElement: element.querySelector(".draw-slot-stat-radius"),
   };
 }
 
@@ -1230,6 +1271,16 @@ function updateDrawSlot(slot, character, settled = false) {
   slot.element.classList.toggle("settled", settled);
   slot.nameElement.textContent = character.name;
   slot.titleElement.textContent = character.title;
+
+  if (settled) {
+    slot.basicNameElement.textContent = character.basicAttack?.name ?? "—";
+    slot.ultNameElement.textContent = character.ultimate?.name ?? "—";
+    slot.statHpElement.textContent = character.stats.maxHp;
+    slot.statSpeedElement.textContent = character.stats.speed;
+    slot.statEssenceElement.textContent = character.stats.maxEssence;
+    slot.statRangeElement.textContent = character.stats.attackRange;
+    slot.statRadiusElement.textContent = character.stats.radius;
+  }
 }
 
 function runDrawSequence(poolIds, drawCount) {

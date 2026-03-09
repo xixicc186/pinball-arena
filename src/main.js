@@ -562,175 +562,9 @@ function drawRecordingOverlay(ctx, width, height, margin, radius) {
 }
 
 function renderRecordingFrame(snapshot = recordingState.latestSnapshot) {
-  if (!recordingState.active || !recordingState.renderCanvas || !recordingState.renderCtx) {
-    return;
-  }
-
   if (snapshot) {
     recordingState.latestSnapshot = snapshot;
   }
-
-  const currentSnapshot = recordingState.latestSnapshot;
-  const ctx = recordingState.renderCtx;
-  const W = recordingState.renderCanvas.width;   // 1080
-  const H = recordingState.renderCanvas.height;  // 1920
-  const mg = 24;
-  const gp = 12;
-  const rd = 16;
-  const hud = getHudDisplay(currentSnapshot);
-  const entries = getScoreboardEntries(currentSnapshot);
-  const contentW = W - mg * 2;  // 1032
-
-  ctx.save();
-
-  // Background
-  ctx.fillStyle = "#070710";
-  ctx.fillRect(0, 0, W, H);
-
-  // === HUD BAR (top) ===
-  const hudH = 84;
-  fillRoundedPanel(ctx, mg, mg, contentW, hudH, rd);
-
-  const hudPad = 20;
-  const timerColW = 170;
-  ctx.textBaseline = "alphabetic";
-  ctx.textAlign = "left";
-
-  ctx.fillStyle = "rgba(255,255,255,0.52)";
-  ctx.font = `600 18px "Microsoft YaHei UI", sans-serif`;
-  ctx.fillText("计时", mg + hudPad, mg + 28);
-  ctx.fillText("阶段", mg + hudPad + timerColW, mg + 28);
-
-  ctx.fillStyle = "#fff7eb";
-  ctx.font = `700 36px "Trebuchet MS", "Microsoft YaHei UI", sans-serif`;
-  ctx.fillText(hud.timer, mg + hudPad, mg + 68);
-
-  ctx.font = `700 22px "Microsoft YaHei UI", sans-serif`;
-  const phaseLines = wrapText(ctx, hud.phase, contentW - timerColW - hudPad * 2, 2);
-  phaseLines.forEach((line, li) => {
-    ctx.fillText(line, mg + hudPad + timerColW, mg + 44 + li * 26);
-  });
-
-  // === GAME CANVAS ===
-  const gameY = mg + hudH + gp;
-  const gameW = contentW;
-  const gameH = Math.round(gameW * canvas.height / canvas.width);
-  ctx.drawImage(canvas, mg, gameY, gameW, gameH);
-  ctx.strokeStyle = "rgba(255,255,255,0.07)";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(mg, gameY, gameW, gameH);
-
-  // === MATCH RESULT BANNER (overlaid on game area) ===
-  if (!overlay.classList.contains("hidden")) {
-    const eyebrow = overlay.querySelector(".overlay-eyebrow")?.textContent?.trim() ?? "";
-    const title = overlay.querySelector("h2")?.textContent?.trim() ?? "";
-    if (eyebrow || title) {
-      const bannerH = 132;
-      const bannerY = gameY + (gameH - bannerH) / 2;
-      ctx.fillStyle = "rgba(6,6,12,0.88)";
-      roundRectPath(ctx, mg, bannerY, gameW, bannerH, rd);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(243,210,162,0.45)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.textAlign = "center";
-      ctx.textBaseline = "alphabetic";
-      ctx.fillStyle = "#f3d2a2";
-      ctx.font = `600 22px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(eyebrow, mg + gameW / 2, bannerY + 38);
-      ctx.fillStyle = "#fff7eb";
-      ctx.font = `700 46px Georgia, "Microsoft YaHei UI", serif`;
-      ctx.fillText(title, mg + gameW / 2, bannerY + 102);
-    }
-  }
-
-  // === SCOREBOARD (below game) ===
-  if (entries.length > 0) {
-    const scoreTop = gameY + gameH + gp;
-    const scoreAreaH = H - scoreTop - mg;
-    const rowH = Math.floor((scoreAreaH - (entries.length - 1) * gp) / entries.length);
-    const rowPad = 16;
-    const barH = Math.max(8, Math.round(rowH * 0.065));
-    const barR = Math.round(barH / 2);
-
-    entries.forEach((actor, idx) => {
-      const rowY = scoreTop + idx * (rowH + gp);
-      const character = getCharacterById(actor.characterId);
-      fillRoundedPanel(ctx, mg, rowY, contentW, rowH, rd);
-
-      // Left color accent strip
-      ctx.save();
-      roundRectPath(ctx, mg, rowY, 6, rowH, 3);
-      ctx.fillStyle = actor.color;
-      ctx.fill();
-      ctx.restore();
-
-      const innerX = mg + 6 + rowPad;
-      const innerW = contentW - 6 - rowPad * 2;
-      const nameFontSize = Math.max(18, Math.min(30, Math.round(rowH * 0.22)));
-      const subFontSize = Math.max(13, Math.min(18, Math.round(rowH * 0.13)));
-      const skillFontSize = Math.max(12, Math.min(16, Math.round(rowH * 0.11)));
-
-      // Name
-      ctx.textAlign = "left";
-      ctx.textBaseline = "top";
-      ctx.fillStyle = actor.color;
-      ctx.font = `700 ${nameFontSize}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(actor.name, innerX, rowY + rowPad);
-
-      // Title
-      ctx.fillStyle = "rgba(255,255,255,0.48)";
-      ctx.font = `500 ${subFontSize}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(actor.title, innerX, rowY + rowPad + nameFontSize + 4);
-
-      // Skills (if height allows)
-      if (character && rowH >= 140) {
-        const skillParts = [
-          character.basicAttack?.name && `普攻 ${character.basicAttack.name}`,
-          character.ultimate?.name && `大招 ${character.ultimate.name}`,
-        ].filter(Boolean);
-        ctx.fillStyle = "rgba(255,255,255,0.30)";
-        ctx.font = `500 ${skillFontSize}px "Microsoft YaHei UI", sans-serif`;
-        ctx.fillText(skillParts.join("  \u00b7  "), innerX, rowY + rowPad + nameFontSize + 4 + subFontSize + 4);
-      }
-
-      // Status badge (top-right)
-      ctx.textAlign = "right";
-      ctx.textBaseline = "top";
-      ctx.fillStyle = actor.alive ? "#7affad" : "rgba(245,239,231,0.38)";
-      ctx.font = `600 ${subFontSize}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(actor.alive ? "存活" : "淡汰", mg + contentW - rowPad, rowY + rowPad);
-
-      // HP bar
-      const hpBarY = rowY + rowH - rowPad - barH * 2 - 8;
-      ctx.fillStyle = "rgba(255,255,255,0.08)";
-      roundRectPath(ctx, innerX, hpBarY, innerW, barH, barR);
-      ctx.fill();
-      ctx.fillStyle = "#ff916f";
-      roundRectPath(ctx, innerX, hpBarY, Math.max(0, innerW * (actor.maxHp ? actor.hp / actor.maxHp : 0)), barH, barR);
-      ctx.fill();
-
-      // Essence bar
-      const esBarY = hpBarY + barH + 8;
-      ctx.fillStyle = "rgba(255,255,255,0.08)";
-      roundRectPath(ctx, innerX, esBarY, innerW, barH, barR);
-      ctx.fill();
-      ctx.fillStyle = "#f6dc7d";
-      roundRectPath(ctx, innerX, esBarY, Math.max(0, innerW * (actor.maxEssence ? actor.essence / actor.maxEssence : 0)), barH, barR);
-      ctx.fill();
-
-      // Bar labels
-      ctx.textBaseline = "bottom";
-      ctx.fillStyle = "rgba(255,255,255,0.4)";
-      ctx.font = `500 13px "Microsoft YaHei UI", sans-serif`;
-      ctx.textAlign = "left";
-      ctx.fillText(`HP ${actor.hp}/${actor.maxHp}`, innerX, hpBarY - 3);
-      ctx.textAlign = "right";
-      ctx.fillText(`精元 ${actor.essence}/${actor.maxEssence}`, innerX + innerW, esBarY - 3);
-    });
-  }
-
-  ctx.restore();
 }
 function canRecordCanvas() {
   return typeof canvas.captureStream === "function" && typeof MediaRecorder !== "undefined";
@@ -817,13 +651,10 @@ function stopDrawRecordingLoop() {
 }
 
 function renderDrawOnCanvas() {
-  if (!recordingState.active || !recordingState.renderCanvas || !recordingState.renderCtx) {
-    return;
-  }
-
-  const ctx = recordingState.renderCtx;
-  const W = recordingState.renderCanvas.width;   // 1080
-  const H = recordingState.renderCanvas.height;  // 1920
+  if (!recordingState.active) return;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
   const mg = 24;
   const gp = 12;
   const rd = 16;
@@ -1090,13 +921,8 @@ function startCanvasRecording() {
   }
 
   try {
-    const renderCanvas = document.createElement("canvas");
-    renderCanvas.width = 1080;
-    renderCanvas.height = 1920;
-    const renderCtx = renderCanvas.getContext("2d");
-
     const mimeType = getRecordingMimeType();
-    const stream = renderCanvas.captureStream(RECORDING_FPS);
+    const stream = canvas.captureStream(RECORDING_FPS);
     const options = {
       videoBitsPerSecond: RECORDING_BITS_PER_SECOND,
     };
@@ -1112,8 +938,8 @@ function startCanvasRecording() {
     recordingState.stream = stream;
     recordingState.chunks = [];
     recordingState.mimeType = mimeType || "video/webm";
-    recordingState.renderCanvas = renderCanvas;
-    recordingState.renderCtx = renderCtx;
+    recordingState.renderCanvas = null;
+    recordingState.renderCtx = null;
     updateRecordButton();
 
     recorder.addEventListener("dataavailable", (event) => {

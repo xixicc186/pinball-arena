@@ -4,8 +4,8 @@ import {
   instantiateCharacter,
 } from "./characters.js";
 
-const WORLD_WIDTH = 960;
-const WORLD_HEIGHT = 540;
+const WORLD_WIDTH = 540;
+const WORLD_HEIGHT = 960;
 const MAX_DT = 1 / 30;
 const DEFAULT_DUEL_TIME = 45;
 const BASE_ESSENCE_INTERVAL = 3.2;
@@ -216,17 +216,20 @@ export class ArenaGame {
   }
 
   start(selectedCharacterId, rosterIds = null, options = {}) {
-    const selected = getCharacterById(selectedCharacterId) ?? CHARACTER_LIBRARY[0];
     const chosenIds = Array.isArray(rosterIds) && rosterIds.length
       ? [...new Set(rosterIds)]
       : CHARACTER_LIBRARY.map((character) => character.id);
-    if (!chosenIds.includes(selected.id)) {
-      chosenIds.unshift(selected.id);
-    }
-
     const roster = chosenIds
       .map((id) => getCharacterById(id))
       .filter(Boolean);
+    const selected = roster.find((character) => character.id === selectedCharacterId)
+      ?? getCharacterById(selectedCharacterId)
+      ?? roster[0]
+      ?? CHARACTER_LIBRARY[0];
+
+    if (!roster.length) {
+      return;
+    }
 
     this.state = {
       elapsed: 0,

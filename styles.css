@@ -127,13 +127,16 @@ body {
   position: relative;
   overflow: hidden;
   border-radius: 28px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
 }
 
 #arena-canvas {
   display: block;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 16 / 9;
+  height: min(82vh, 900px);
+  width: auto;
+  aspect-ratio: 9 / 16;
   background:
     radial-gradient(circle at center, rgba(255, 255, 255, 0.05), transparent 32%),
     linear-gradient(180deg, #060606 0%, #161616 100%);

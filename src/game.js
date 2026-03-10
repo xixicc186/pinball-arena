@@ -6,6 +6,8 @@ import {
 
 const WORLD_WIDTH = 540;
 const WORLD_HEIGHT = 960;
+// 全局游戏尺度系数：小球、技能半径、炮台射程等都乘以此系数
+const GAME_SCALE = 4 / 3;
 const MAX_DT = 1 / 30;
 const DEFAULT_DUEL_TIME = 45;
 const BASE_ESSENCE_INTERVAL = 3.2;
@@ -268,10 +270,10 @@ export class ArenaGame {
 
   spawnActor(character, index, isPlayer) {
     const definition = instantiateCharacter(character);
-    const radius = (definition.stats.radius ?? 18) * 2;
+    const radius = (definition.stats.radius ?? 18) * GAME_SCALE;
     const position = this.sampleFreePoint(radius + 8);
     const direction = randomUnit();
-    const baseSpeed = definition.stats.speed * 2;
+    const baseSpeed = definition.stats.speed * GAME_SCALE;
 
     const actor = {
       id: `${definition.id}-${index}-${Math.random().toString(16).slice(2, 8)}`,
@@ -286,7 +288,7 @@ export class ArenaGame {
       velocity: scale(direction, baseSpeed),
       radius,
       baseRadius: radius,
-      stats: { ...definition.stats, speed: definition.stats.speed * 2 },
+      stats: { ...definition.stats, speed: definition.stats.speed * GAME_SCALE },
       hp: definition.stats.maxHp,
       essence: 0,
       alive: true,
@@ -983,7 +985,7 @@ export class ArenaGame {
       ownerId: owner.id,
       position: { ...(config.position ?? owner.position) },
       velocity: scale(direction, speed),
-      radius: config.radius ?? 5,
+      radius: (config.radius ?? 5) * GAME_SCALE,
       damage: config.damage ?? 8,
       lifetime: config.lifetime ?? 2,
       color: config.color ?? owner.color,
@@ -992,7 +994,7 @@ export class ArenaGame {
       remainingHits: (config.pierce ?? 0) + 1,
       hitIds: new Set(),
       shape: config.shape ?? "orb",
-      length: config.length ?? Math.max((config.radius ?? 5) * 2.2, 8),
+      length: (config.length ?? Math.max((config.radius ?? 5) * 2.2, 8)) * GAME_SCALE,
       frostConfig: config.frostConfig ?? null,
     };
     this.state.projectiles.push(projectile);
@@ -1050,7 +1052,7 @@ export class ArenaGame {
       id: Math.random().toString(16).slice(2),
       ownerId: owner.id,
       position: { ...(config.position ?? owner.position) },
-      radius: config.radius ?? 100,
+      radius: (config.radius ?? 100) * GAME_SCALE,
       lifetime: config.lifetime ?? 0.35,
       maxLifetime: config.lifetime ?? 0.35,
       color: config.color ?? owner.color,
@@ -1096,7 +1098,7 @@ export class ArenaGame {
       id: Math.random().toString(16).slice(2),
       ownerId: owner.id,
       position: { ...(config.position ?? owner.position) },
-      radius: config.radius ?? 16,
+      radius: (config.radius ?? 16) * GAME_SCALE,
       lifetime: config.lifetime ?? 2,
       maxLifetime: config.lifetime ?? 2,
       color: config.color ?? owner.color,
@@ -1207,14 +1209,14 @@ export class ArenaGame {
       id: Math.random().toString(16).slice(2),
       ownerId: owner.id,
       position: { ...(config.position ?? owner.position) },
-      radius: config.radius ?? 15,
+      radius: (config.radius ?? 15) * GAME_SCALE,
       level: 1,
       color: config.color ?? owner.color,
       projectileColor: config.projectileColor ?? config.color ?? owner.color,
       fireInterval: config.fireInterval ?? 1.2,
       fireCooldown: randomBetween(0.15, config.fireInterval ?? 1.2),
       damage: config.damage ?? 5,
-      range: config.range ?? 240,
+      range: (config.range ?? 240) * GAME_SCALE,
       maxHits: config.maxHits ?? 2,
       hitsTaken: 0,
       contactTimers: new Map(),
@@ -1367,7 +1369,7 @@ export class ArenaGame {
       id: Math.random().toString(16).slice(2),
       ownerId: owner.id,
       position: { ...(config.position ?? owner.position) },
-      radius: config.radius ?? 28,
+      radius: (config.radius ?? 28) * GAME_SCALE,
       damage: config.damage ?? 30,
       delay: config.delay ?? 1,
       maxDelay: config.delay ?? 1,
@@ -2573,7 +2575,7 @@ export class ArenaGame {
       hitsTaken: 0,
       maxHits: config.maxHits ?? 3,
       explodeDamage: config.explodeDamage ?? 8,
-      explodeRadius: config.explodeRadius ?? 48,
+      explodeRadius: (config.explodeRadius ?? 48) * GAME_SCALE,
       contactTimers: new Map(),
     };
     this.state.decoys.push(decoy);

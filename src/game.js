@@ -254,8 +254,6 @@ export class ArenaGame {
       this.state.actors.push(this.spawnActor(character, index, character.id === selected.id));
     });
 
-    this.spawnDynamicWall();
-
     this.callbacks.onMatchStart?.(this.snapshot());
     this.announce(`${selected.name} 已进入角斗场。`);
 

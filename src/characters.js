@@ -779,7 +779,7 @@ export const CHARACTER_LIBRARY = [
     name: "汲取者",
     title: "锁链吸血",
     color: "#cc4466",
-    description: "每隔4秒向最近敌人发射吸血锁链，命中后每0.5秒吸取2滴血，超出距离或有墙壁阻挡则断开。大招移速减半，向所有敌人强制发射无法断开的锁链。",
+    description: "每隔4秒向最近敌人发射吸血锁链，命中后每0.5秒吸取2滴血，目标死亡则断开。大招移速减半，向所有敌人强制发射无法断开的锁链。",
     visual: { motif: "leech" },
     stats: {
       maxHp: 110,
@@ -790,7 +790,6 @@ export const CHARACTER_LIBRARY = [
     },
     tuning: {
       basic: {
-        maxRange: 280,
         drainDamage: 2,
         healAmount: 2,
         tickInterval: 0.5,
@@ -841,7 +840,7 @@ export const CHARACTER_LIBRARY = [
       execute({ actor, api }) {
         if (actor.state.drainActive) return;
         const tuning = actor.definition.tuning.basic;
-        const target = api.findNearestEnemy(tuning.maxRange);
+        const target = api.findNearestEnemy();
         if (!target) return;
 
         actor.state.drainActive = true;
@@ -853,17 +852,6 @@ export const CHARACTER_LIBRARY = [
         function tick({ actor: a, api: sApi, game }) {
           const currentTarget = game.findActorById(targetId);
           if (!currentTarget?.alive || !a.alive || ticks >= tuning.maxTicks) {
-            a.state.drainActive = false;
-            beam.lifetime = 0;
-            return;
-          }
-          const dist = sApi.distance(a, currentTarget);
-          if (dist > tuning.maxRange + currentTarget.radius) {
-            a.state.drainActive = false;
-            beam.lifetime = 0;
-            return;
-          }
-          if (!game.hasLineOfSight(a.position, currentTarget.position)) {
             a.state.drainActive = false;
             beam.lifetime = 0;
             return;

@@ -311,25 +311,9 @@ body {
 }
 
 .entry-card-ball {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
   flex-shrink: 0;
-  background: radial-gradient(
-    circle at 35% 30%,
-    rgba(255, 255, 255, 0.6) 0%,
-    var(--char-color) 50%,
-    var(--char-color) 100%
-  );
-  box-shadow:
-    0 0 18px var(--char-color),
-    0 0 40px color-mix(in srgb, var(--char-color) 40%, transparent);
-  animation: entry-ball-pulse 2.2s ease-in-out infinite;
-}
-
-@keyframes entry-ball-pulse {
-  0%, 100% { box-shadow: 0 0 18px var(--char-color); }
-  50% { box-shadow: 0 0 28px var(--char-color), 0 0 56px color-mix(in srgb, var(--char-color) 50%, transparent); }
+  display: block;
+  background: transparent;
 }
 
 .entry-card-info {

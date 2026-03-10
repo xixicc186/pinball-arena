@@ -13,6 +13,8 @@ const DEFAULT_DUEL_TIME = 45;
 const BASE_ESSENCE_INTERVAL = 3.2;
 const DUEL_ESSENCE_INTERVAL = 1.15;
 const MAX_ESSENCE_ON_FIELD = 6;
+const ACTOR_COLLISION_RESTITUTION = 0.94;
+const ACTOR_COLLISION_SLOP = 0.01;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -60,6 +62,32 @@ function reflect(vector, normal) {
     x: vector.x - normalScale * normal.x,
     y: vector.y - normalScale * normal.y,
   };
+}
+
+function getCollisionNormal(delta, relativeVelocity) {
+  const deltaLength = length(delta);
+  if (deltaLength > 0.0001) {
+    return scale(delta, 1 / deltaLength);
+  }
+
+  const relativeSpeed = length(relativeVelocity);
+  if (relativeSpeed > 0.0001) {
+    return scale(relativeVelocity, 1 / relativeSpeed);
+  }
+
+  return randomUnit();
+}
+
+function getActorMass(actor) {
+  const radius = Math.max(actor.radius ?? actor.baseRadius ?? 18, 1);
+  return radius * radius;
+}
+
+function getActorInverseMass(actor, anchored) {
+  if (anchored) {
+    return 0;
+  }
+  return 1 / getActorMass(actor);
 }
 
 function randomBetween(min, max) {
@@ -860,36 +888,32 @@ export class ArenaGame {
         const delta = subtract(right.position, left.position);
         const gap = length(delta);
         const minGap = left.radius + right.radius;
-        if (!gap || gap >= minGap) {
+        if (gap >= minGap) {
           continue;
         }
 
-        const normal = scale(delta, 1 / gap);
+        const relativeVelocity = subtract(right.velocity, left.velocity);
+        const normal = getCollisionNormal(delta, relativeVelocity);
         const overlap = minGap - gap;
         const leftAnchored = this.isActorAnchored(left);
         const rightAnchored = this.isActorAnchored(right);
+        const leftInverseMass = getActorInverseMass(left, leftAnchored);
+        const rightInverseMass = getActorInverseMass(right, rightAnchored);
+        const inverseMassSum = leftInverseMass + rightInverseMass;
 
-        if (leftAnchored && !rightAnchored) {
-          right.position = add(right.position, scale(normal, overlap + 0.2));
-        } else if (!leftAnchored && rightAnchored) {
-          left.position = add(left.position, scale(normal, -overlap - 0.2));
-        } else {
-          left.position = add(left.position, scale(normal, -overlap / 2));
-          right.position = add(right.position, scale(normal, overlap / 2));
+        if (inverseMassSum > 0) {
+          const correctionMagnitude = (overlap + ACTOR_COLLISION_SLOP) / inverseMassSum;
+          left.position = add(left.position, scale(normal, -correctionMagnitude * leftInverseMass));
+          right.position = add(right.position, scale(normal, correctionMagnitude * rightInverseMass));
         }
 
-        const relative = subtract(left.velocity, right.velocity);
-        const closingSpeed = dot(relative, normal);
-        if (closingSpeed < 0) {
-          if (leftAnchored && !rightAnchored) {
-            right.velocity = reflect(right.velocity, normal);
-          } else if (!leftAnchored && rightAnchored) {
-            left.velocity = reflect(left.velocity, scale(normal, -1));
-          } else {
-            const impulse = ((1 + 0.95) * -closingSpeed) / 2;
-            left.velocity = add(left.velocity, scale(normal, impulse));
-            right.velocity = add(right.velocity, scale(normal, -impulse));
-          }
+        const velocityAlongNormal = dot(relativeVelocity, normal);
+        if (velocityAlongNormal < 0 && inverseMassSum > 0) {
+          const impulseMagnitude =
+            (-(1 + ACTOR_COLLISION_RESTITUTION) * velocityAlongNormal) / inverseMassSum;
+          const impulse = scale(normal, impulseMagnitude);
+          left.velocity = add(left.velocity, scale(impulse, -leftInverseMass));
+          right.velocity = add(right.velocity, scale(impulse, rightInverseMass));
         }
 
         this.fireTrigger(left, "collision", { other: right, normal });
@@ -2303,6 +2327,39 @@ export class ArenaGame {
         ctx.fill();
     }
 
+    ctx.restore();
+  }
+
+  // Render a character ball preview onto an arbitrary canvas context.
+  // Used by the entry animation cards to show the exact same ball as in-arena.
+  renderBallPreview(ctx, character, elapsed) {
+    const W = ctx.canvas.width;
+    const H = ctx.canvas.height;
+    const gameRadius = character.stats?.radius ?? character.radius ?? 18;
+    const targetRadius = Math.min(W, H) * 0.38;
+    const scaleFactor = targetRadius / gameRadius;
+
+    const fakeActor = {
+      characterId: character.id,
+      color: character.color,
+      radius: gameRadius,
+      baseRadius: gameRadius,
+      velocity: { x: 1, y: 0 },
+      position: { x: 0, y: 0 },
+      highlightTime: 0,
+      state: {
+        invulnerableTime: 0,
+        frozenTime: 0,
+        frostStacks: 0,
+        movementLock: 0,
+      },
+      alive: true,
+    };
+
+    ctx.save();
+    ctx.translate(W / 2, H / 2);
+    ctx.scale(scaleFactor, scaleFactor);
+    this.renderActorBody(ctx, fakeActor, elapsed);
     ctx.restore();
   }
 

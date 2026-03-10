@@ -72,6 +72,8 @@ const entryState = {
   active: false,
   timeoutIds: [],
   characters: [],
+  animFrameId: null,
+  animStart: 0,
 };
 const battleFeedItems = [];
 
@@ -749,11 +751,43 @@ function hideEntryStage() {
   entryStage.classList.add("hidden");
   entryStageCards.innerHTML = "";
   entryState.characters = [];
+  stopEntryBallLoop();
 }
 
 function clearEntryTimers() {
   entryState.timeoutIds.forEach((id) => clearTimeout(id));
   entryState.timeoutIds = [];
+}
+
+function stopEntryBallLoop() {
+  if (entryState.animFrameId != null) {
+    cancelAnimationFrame(entryState.animFrameId);
+    entryState.animFrameId = null;
+  }
+}
+
+function startEntryBallLoop() {
+  stopEntryBallLoop();
+  entryState.animStart = performance.now();
+
+  const loop = () => {
+    if (!entryState.active) {
+      entryState.animFrameId = null;
+      return;
+    }
+    const elapsed = (performance.now() - entryState.animStart) / 1000;
+    entryState.characters.forEach((character, index) => {
+      const card = entryStageCards.children[index];
+      const ballCanvas = card?.querySelector(".entry-card-ball");
+      if (!ballCanvas) return;
+      const bCtx = ballCanvas.getContext("2d");
+      bCtx.clearRect(0, 0, ballCanvas.width, ballCanvas.height);
+      game.renderBallPreview(bCtx, character, elapsed);
+    });
+    entryState.animFrameId = requestAnimationFrame(loop);
+  };
+
+  entryState.animFrameId = requestAnimationFrame(loop);
 }
 
 function runEntryAnimation(characterIds) {
@@ -766,6 +800,10 @@ function runEntryAnimation(characterIds) {
   startEntryRecordingLoop();
   updateRosterStatus();
   updateRecordButton();
+
+  const dpr = window.devicePixelRatio || 1;
+  const cssSize = 64;
+  const canvasSize = Math.round(cssSize * dpr);
 
   entryState.characters.forEach((character, index) => {
     const card = document.createElement("article");
@@ -781,7 +819,7 @@ function runEntryAnimation(characterIds) {
     ].join("");
 
     card.innerHTML = `
-      <div class="entry-card-ball"></div>
+      <canvas class="entry-card-ball" width="${canvasSize}" height="${canvasSize}" style="width:${cssSize}px;height:${cssSize}px;"></canvas>
       <div class="entry-card-info">
         <div class="entry-card-name">${character.name}</div>
         <div class="entry-card-title">${character.title}</div>
@@ -792,10 +830,13 @@ function runEntryAnimation(characterIds) {
     entryStageCards.appendChild(card);
   });
 
+  startEntryBallLoop();
+
   const totalAnimTime = entryState.characters.length * ENTRY_CARD_STAGGER_MS + 400 + ENTRY_HOLD_MS;
 
   return new Promise((resolve) => {
     const doneId = window.setTimeout(() => {
+      stopEntryBallLoop();
       stopEntryRecordingLoop();
       entryState.active = false;
       clearEntryTimers();

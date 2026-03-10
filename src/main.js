@@ -904,14 +904,14 @@ function getRecordingLayout(cssW, cssH, characterCount) {
   // 再乘 1.35 整体放大，让卡片内容更饱满
   const ballSize   = Math.round(cssW / 5.7 * 1.0);
   // 统一卡片文字字号
-  const textSize   = Math.round(Math.min(cssW * 0.0345, 23));
+  const textSize   = Math.round(Math.min(cssW * 0.0397, 26));
   const lineH      = Math.round(textSize * 1.5);
-  const pillSize   = Math.round(Math.min(cssW * 0.025, 17));
+  const pillSize   = Math.round(Math.min(cssW * 0.0288, 20));
   const pillH      = pillSize + 6;
   const cardPadV   = Math.round(ballSize * 0.22);
   const cardPadH   = Math.round(ballSize * 0.22);
-  // 卡片高度：容纳 name + title + 2行描述 + 技能行，或球高，取较大值
-  const textContentH = lineH * 4 + pillH + 8;
+  // 卡片高度：容纳 name + title + 3行描述 + 技能行，或球高，取较大值
+  const textContentH = lineH * 5 + pillH + 8;
   const cardH      = Math.max(ballSize, textContentH) + cardPadV * 2;
   const cardGap    = Math.round(ballSize * 0.16);
   // 左右贴到视频边缘（仅留 4px 边距）
@@ -1037,7 +1037,7 @@ function renderEntryOutroOnCanvas() {
       ctx.fillText(character.title, infoX, textTop + lineH);
       if (character.description) {
         ctx.fillStyle = "rgba(255,255,255,0.5)";
-        wrapText(ctx, character.description, infoMaxW, 2).forEach((line, li) => {
+        wrapText(ctx, character.description, infoMaxW, 3).forEach((line, li) => {
           ctx.fillText(line, infoX, textTop + lineH * 2 + li * lineH);
         });
       }
@@ -1175,7 +1175,7 @@ function renderEntryOnCanvas() {
 
     if (character.description) {
       ctx.fillStyle = "rgba(255,255,255,0.5)";
-      wrapText(ctx, character.description, infoMaxW, 2).forEach((line, li) => {
+      wrapText(ctx, character.description, infoMaxW, 3).forEach((line, li) => {
         ctx.fillText(line, infoX, textTop + lineH * 2 + li * lineH);
       });
     }

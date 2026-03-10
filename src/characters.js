@@ -847,22 +847,25 @@ export const CHARACTER_LIBRARY = [
         actor.state.drainActive = true;
         const targetId = target.id;
         const totalDuration = tuning.tickInterval * tuning.maxTicks;
-        api.createDrainBeam({ targetId, duration: totalDuration, color: actor.color });
+        const beam = api.createDrainBeam({ targetId, duration: totalDuration, color: actor.color });
 
         let ticks = 0;
         function tick({ actor: a, api: sApi, game }) {
           const currentTarget = game.findActorById(targetId);
           if (!currentTarget?.alive || !a.alive || ticks >= tuning.maxTicks) {
             a.state.drainActive = false;
+            beam.lifetime = 0;
             return;
           }
           const dist = sApi.distance(a, currentTarget);
           if (dist > tuning.maxRange + currentTarget.radius) {
             a.state.drainActive = false;
+            beam.lifetime = 0;
             return;
           }
           if (!game.hasLineOfSight(a.position, currentTarget.position)) {
             a.state.drainActive = false;
+            beam.lifetime = 0;
             return;
           }
           sApi.dealDamage(currentTarget, tuning.drainDamage);
@@ -887,11 +890,18 @@ export const CHARACTER_LIBRARY = [
 
         targets.forEach((target) => {
           const targetId = target.id;
-          api.createDrainBeam({ targetId, duration: totalDuration, color: "#ff4466" });
+          const beam = api.createDrainBeam({ targetId, duration: totalDuration, color: "#ff4466" });
           let ticks = 0;
           function tick({ actor: a, api: sApi, game }) {
             const currentTarget = game.findActorById(targetId);
-            if (!currentTarget?.alive || !a.alive || ticks >= tuning.maxTicks) return;
+            if (!currentTarget?.alive || !a.alive || ticks >= tuning.maxTicks) {
+              beam.lifetime = 0;
+              return;
+            }
+            if (!game.hasLineOfSight(a.position, currentTarget.position)) {
+              beam.lifetime = 0;
+              return;
+            }
             sApi.dealDamage(currentTarget, tuning.drainDamage);
             sApi.heal(tuning.healAmount);
             ticks += 1;

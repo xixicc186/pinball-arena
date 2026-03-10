@@ -890,15 +890,11 @@ export const CHARACTER_LIBRARY = [
 
         targets.forEach((target) => {
           const targetId = target.id;
-          const beam = api.createDrainBeam({ targetId, duration: totalDuration, color: "#ff4466" });
+          const beam = api.createDrainBeam({ targetId, duration: totalDuration, color: "#ff4466", thick: true });
           let ticks = 0;
           function tick({ actor: a, api: sApi, game }) {
             const currentTarget = game.findActorById(targetId);
             if (!currentTarget?.alive || !a.alive || ticks >= tuning.maxTicks) {
-              beam.lifetime = 0;
-              return;
-            }
-            if (!game.hasLineOfSight(a.position, currentTarget.position)) {
               beam.lifetime = 0;
               return;
             }

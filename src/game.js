@@ -2537,6 +2537,7 @@ export class ArenaGame {
       color: config.color ?? owner.color,
       lifetime: config.duration ?? 3,
       maxLifetime: config.duration ?? 3,
+      thick: config.thick ?? false,
     };
     this.state.beams.push(beam);
     return beam;
@@ -2561,9 +2562,9 @@ export class ArenaGame {
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.strokeStyle = beam.color;
-      ctx.lineWidth = 3;
-      ctx.setLineDash([8, 5]);
-      ctx.shadowBlur = 14;
+      ctx.lineWidth = beam.thick ? 7 : 3;
+      ctx.setLineDash(beam.thick ? [14, 6] : [8, 5]);
+      ctx.shadowBlur = beam.thick ? 22 : 14;
       ctx.shadowColor = beam.color;
       ctx.beginPath();
       ctx.moveTo(owner.position.x, owner.position.y);

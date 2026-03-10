@@ -47,12 +47,13 @@
           </section>
 
           <div id="overlay" class="overlay hidden"></div>
-          <div id="draw-stage" class="draw-stage hidden" aria-live="polite">
-            <div class="draw-stage-panel">
-              <p class="draw-stage-eyebrow">Draft</p>
-              <h2>随机抽取本局参战选手</h2>
-              <p id="draw-stage-summary" class="draw-stage-summary"></p>
-              <div id="draw-stage-slots" class="draw-stage-slots"></div>
+          <div id="entry-stage" class="entry-stage hidden" aria-live="polite">
+            <div class="entry-stage-inner">
+              <div class="entry-stage-header">
+                <p class="entry-eyebrow">Battle Start</p>
+                <h2>参战选手登场</h2>
+              </div>
+              <div id="entry-stage-cards" class="entry-stage-cards"></div>
             </div>
           </div>
         </section>
@@ -60,7 +61,7 @@
         <section class="panel toolbar-panel">
           <div class="toolbar-row">
             <button id="record-button" class="secondary-button" type="button">录制对局</button>
-            <button id="start-button" class="primary-button" type="button">开始抽取并开战</button>
+            <button id="start-button" class="primary-button" type="button">开始出战</button>
 
             <label class="toolbar-toggle">
               <input id="edge-spikes-toggle" type="checkbox" checked />
@@ -75,20 +76,12 @@
               </span>
             </label>
 
-            <label class="toolbar-setting">
-              <span class="setting-label">抽取人数</span>
-              <span class="setting-control">
-                <input id="draw-count-input" type="number" min="2" step="1" value="4" />
-                <span class="setting-unit">名</span>
-              </span>
-            </label>
-
             <button id="open-roster-button" class="secondary-button" type="button">角色选择与编辑</button>
             <button id="open-leaderboard-button" class="secondary-button" type="button">积分排行榜</button>
           </div>
 
           <div class="toolbar-meta">
-            <span id="roster-status" class="roster-status">已选择 0 名参与抽取角色</span>
+            <span id="roster-status" class="roster-status">已选择 0 名出战角色</span>
           </div>
         </section>
       </main>
@@ -101,7 +94,7 @@
           <div>
             <p class="eyebrow">Roster</p>
             <h2 id="modal-title">角色选择与编辑</h2>
-            <p id="modal-roster-status" class="modal-note">已选择 0 名参与抽取角色</p>
+            <p id="modal-roster-status" class="modal-note">已选择 0 名出战角色</p>
           </div>
 
           <div class="modal-actions">
@@ -153,6 +146,6 @@
       </section>
     </div>
 
-    <script type="module" src="./src/main.js?v=20260310-leaderboard"></script>
+    <script type="module" src="./src/main.js?v=20260310-entry-anim"></script>
   </body>
 </html>

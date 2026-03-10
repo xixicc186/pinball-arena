@@ -27,11 +27,9 @@ const leaderboardModal = document.getElementById("leaderboard-modal");
 const leaderboardRowsEl = document.getElementById("leaderboard-rows");
 const edgeSpikesToggle = document.getElementById("edge-spikes-toggle");
 const duelTimeInput = document.getElementById("duel-time-input");
-const drawCountInput = document.getElementById("draw-count-input");
 const overlay = document.getElementById("overlay");
-const drawStage = document.getElementById("draw-stage");
-const drawStageSummaryElement = document.getElementById("draw-stage-summary");
-const drawStageSlotsElement = document.getElementById("draw-stage-slots");
+const entryStage = document.getElementById("entry-stage");
+const entryStageCards = document.getElementById("entry-stage-cards");
 const scoreboard = document.getElementById("scoreboard");
 const feed = document.getElementById("feed");
 const hudTimer = document.getElementById("hud-timer");
@@ -39,22 +37,17 @@ const hudPhase = document.getElementById("hud-phase");
 const canvas = document.getElementById("arena-canvas");
 
 const DEFAULT_DUEL_TIME = 45;
-const DEFAULT_DRAW_COUNT = Math.max(2, Math.min(4, CHARACTER_LIBRARY.length));
 const RECORDING_FPS = 60;
 const RECORDING_BITS_PER_SECOND = 24_000_000;
 const RECORDING_END_HOLD_MS = 5000;
-const DRAW_SPIN_INTERVAL_MS = 90;
-const DRAW_SETTLE_BASE_MS = 1200;
-const DRAW_SETTLE_STEP_MS = 320;
-const DRAW_END_HOLD_MS = 650;
+const ENTRY_CARD_STAGGER_MS = 200;
+const ENTRY_HOLD_MS = 1800;
 
 let selectedId = CHARACTER_LIBRARY[0].id;
 let selectedRosterIds = new Set(CHARACTER_LIBRARY.map((character) => character.id));
-let guaranteedIds = new Set();
 const matchSettings = {
   includeEdgeHazards: true,
   duelTime: DEFAULT_DUEL_TIME,
-  drawCount: DEFAULT_DRAW_COUNT,
 };
 const recordingState = {
   active: false,
@@ -75,12 +68,11 @@ const recordingState = {
 let leaderboardScores = {};
 // 当前对局结算结果
 let currentMatchResult = null;
-const drawState = {
+const entryState = {
   active: false,
-  intervalIds: [],
   timeoutIds: [],
+  characters: [],
 };
-let currentDrawSlots = [];
 const battleFeedItems = [];
 
 function sanitizeDuelTime(value) {
@@ -125,50 +117,28 @@ function syncRosterSelection() {
   return;
 }
 
-function sanitizeDrawCount(value, eligibleCount = getRosterIds().length) {
-  const rounded = Math.round(value || DEFAULT_DRAW_COUNT);
-  if (eligibleCount < 2) {
-    return Math.max(2, rounded);
-  }
-  return Math.max(2, Math.min(eligibleCount, rounded));
-}
-
 function canStartMatch() {
-  const eligibleCount = getRosterIds().length;
-  return eligibleCount >= 2 && matchSettings.drawCount >= 2 && matchSettings.drawCount <= eligibleCount;
-}
-
-function syncDrawCountInput() {
-  const eligibleCount = getRosterIds().length;
-  matchSettings.drawCount = sanitizeDrawCount(matchSettings.drawCount, eligibleCount);
-  drawCountInput.min = "2";
-  drawCountInput.max = `${Math.max(2, eligibleCount)}`;
-  drawCountInput.value = `${matchSettings.drawCount}`;
+  return getRosterIds().length >= 2;
 }
 
 function updateRosterStatus() {
-  const eligibleCount = getRosterIds().length;
-  const drawCount = Math.min(matchSettings.drawCount, Math.max(eligibleCount, 0));
-
-  let text = `已选择 ${eligibleCount} 名参与抽取角色`;
-  if (eligibleCount >= 2) {
-    text += `，将随机抽取 ${drawCount} 名进入对战`;
-  } else {
-    text += "，至少需要 2 名角色才能开始";
-  }
+  const selectedCount = getRosterIds().length;
+  const text = selectedCount >= 2
+    ? `已选择 ${selectedCount} 名出战角色`
+    : `已选择 ${selectedCount} 名出战角色，至少需要 2 名才能开始`;
 
   rosterStatusElement.textContent = text;
   modalRosterStatusElement.textContent =
-    `${text}。点击卡片切换编辑对象，只有标记为“参与抽取”的角色才会进入抽签池。`;
+    `${text}。点击卡片切换编辑对象，标记为”出战”的角色将全部参与对战。`;
 
-  if (drawState.active) {
+  if (entryState.active) {
     startButton.disabled = true;
-    startButton.textContent = "抽取中...";
+    startButton.textContent = “登场中...”;
     return;
   }
 
   startButton.disabled = !canStartMatch() || recordingState.active;
-  startButton.textContent = canStartMatch() ? "开始抽取并开战" : "至少选择 2 名角色";
+  startButton.textContent = canStartMatch() ? “开始出战” : “至少选择 2 名角色”;
 }
 
 function collectOverrides(character) {
@@ -195,7 +165,6 @@ function renderRoster() {
 
   CHARACTER_LIBRARY.forEach((character) => {
     const included = selectedRosterIds.has(character.id);
-    const guaranteed = guaranteedIds.has(character.id);
     const selected = character.id === selectedId;
     const card = document.createElement("button");
     card.type = "button";
@@ -218,7 +187,6 @@ function renderRoster() {
         <div class="card-controls">
           <span class="card-toggle${selected ? " active" : " ghost"}"></span>
           <span class="card-toggle${included ? " active" : " ghost"}"></span>
-          <span class="card-toggle${guaranteed ? " guaranteed" : " ghost"}"></span>
         </div>
       </div>
       <p class="card-desc">${character.description}</p>
@@ -239,8 +207,7 @@ function renderRoster() {
 
     const toggles = card.querySelectorAll(".card-toggle");
     toggles[0].textContent = selected ? "正在编辑" : "点击编辑";
-    toggles[1].textContent = included ? "参与抽取" : "不参与抽取";
-    toggles[2].textContent = guaranteed ? "★ 必选" : "随机";
+    toggles[1].textContent = included ? "出战" : "不出战";
     toggles[0].addEventListener("click", (event) => {
       event.stopPropagation();
       selectedId = character.id;
@@ -252,20 +219,8 @@ function renderRoster() {
       event.stopPropagation();
       if (included) {
         selectedRosterIds.delete(character.id);
-        guaranteedIds.delete(character.id);
       } else {
         selectedRosterIds.add(character.id);
-      }
-      renderRoster();
-    });
-
-    toggles[2].addEventListener("click", (event) => {
-      event.stopPropagation();
-      if (!included) return;
-      if (guaranteed) {
-        guaranteedIds.delete(character.id);
-      } else {
-        guaranteedIds.add(character.id);
       }
       renderRoster();
     });
@@ -273,7 +228,6 @@ function renderRoster() {
     rosterElement.appendChild(card);
   });
 
-  syncDrawCountInput();
   updateRosterStatus();
   updateRecordButton();
 }
@@ -724,9 +678,9 @@ function updateRecordButton() {
 
   const supported = canRecordCanvas();
 
-  if (drawState.active) {
+  if (entryState.active) {
     recordButton.disabled = true;
-    recordButton.textContent = "抽取中...";
+    recordButton.textContent = "登场中...";
     return;
   }
 
@@ -762,13 +716,6 @@ function clearScheduledRecordingStop() {
   }
 }
 
-function stopDrawRecordingLoop() {
-  if (recordingState.drawLoopId != null) {
-    cancelAnimationFrame(recordingState.drawLoopId);
-    recordingState.drawLoopId = null;
-  }
-}
-
 function drawRoundRect(ctx, x, y, w, h, r) {
   const rad = Math.min(r, w / 2, h / 2);
   ctx.beginPath();
@@ -790,279 +737,203 @@ function fitText(ctx, text, maxWidth, maxSize, minSize = 16) {
   return size;
 }
 
-function renderDrawOnCanvas() {
+// ── 出场动画（Entry Animation）────────────────────────────────────────────────
+
+function showEntryStage() {
+  if (!recordingState.active) {
+    entryStage.classList.remove("hidden");
+  }
+}
+
+function hideEntryStage() {
+  entryStage.classList.add("hidden");
+  entryStageCards.innerHTML = "";
+  entryState.characters = [];
+}
+
+function clearEntryTimers() {
+  entryState.timeoutIds.forEach((id) => clearTimeout(id));
+  entryState.timeoutIds = [];
+}
+
+function runEntryAnimation(characterIds) {
+  clearEntryTimers();
+  entryState.active = true;
+  entryState.characters = characterIds.map((id) => getCharacterById(id)).filter(Boolean);
+  entryStageCards.innerHTML = "";
+
+  showEntryStage();
+  startEntryRecordingLoop();
+  updateRosterStatus();
+  updateRecordButton();
+
+  entryState.characters.forEach((character, index) => {
+    const card = document.createElement("article");
+    card.className = "entry-card";
+    card.style.setProperty("--char-color", character.color);
+    card.style.animationDelay = `${index * ENTRY_CARD_STAGGER_MS}ms`;
+
+    const basicName = character.basicAttack?.name ?? "";
+    const ultName = character.ultimate?.name ?? "";
+    const skillsHtml = [
+      basicName ? `<div class="entry-skill"><span class="entry-skill-label">普攻</span><span class="entry-skill-name">${basicName}</span></div>` : "",
+      ultName ? `<div class="entry-skill"><span class="entry-skill-label">大招</span><span class="entry-skill-name">${ultName}</span></div>` : "",
+    ].join("");
+
+    card.innerHTML = `
+      <div class="entry-card-ball"></div>
+      <div class="entry-card-info">
+        <div class="entry-card-name">${character.name}</div>
+        <div class="entry-card-title">${character.title}</div>
+        ${character.description ? `<div class="entry-card-desc">${character.description}</div>` : ""}
+        <div class="entry-card-skills">${skillsHtml}</div>
+      </div>
+    `;
+    entryStageCards.appendChild(card);
+  });
+
+  const totalAnimTime = entryState.characters.length * ENTRY_CARD_STAGGER_MS + 400 + ENTRY_HOLD_MS;
+
+  return new Promise((resolve) => {
+    const doneId = window.setTimeout(() => {
+      stopEntryRecordingLoop();
+      entryState.active = false;
+      clearEntryTimers();
+      updateRosterStatus();
+      updateRecordButton();
+      resolve(characterIds);
+    }, totalAnimTime);
+    entryState.timeoutIds.push(doneId);
+  });
+}
+
+function renderEntryOnCanvas() {
   if (!recordingState.active) return;
   const ctx = canvas.getContext("2d");
-  const W = canvas.width;   // 1080
-  const H = canvas.height;  // 1920
-
-  const slots = [...drawStageSlotsElement.querySelectorAll(".draw-slot")];
-  const slotCount = Math.max(1, slots.length);
+  const W = canvas.width;
+  const H = canvas.height;
 
   ctx.save();
 
-  // ── Background ──────────────────────────────────────────────────────────────
+  // Background
   ctx.fillStyle = "#080808";
   ctx.fillRect(0, 0, W, H);
 
-  // Radial glow top-left
-  const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, W * 0.85);
-  grd.addColorStop(0, "rgba(255,255,255,0.06)");
+  const grd = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, W * 0.9);
+  grd.addColorStop(0, "rgba(255,255,255,0.07)");
   grd.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, W, H);
 
-  // Radial glow bottom-right
-  const grd2 = ctx.createRadialGradient(W, H, 0, W, H, W * 0.7);
-  grd2.addColorStop(0, "rgba(255,255,255,0.04)");
-  grd2.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = grd2;
-  ctx.fillRect(0, 0, W, H);
+  const mg = 60;
+  const headerY = Math.round(H * 0.08);
 
-  // ── Layout constants (fixed, not derived from cardH) ────────────────────────
-  const cardMg  = 28;
-  const cardGap = 14;
-  const cardRd  = 14;
-  const cardPad = 20;
-  const nameSz  = 48;
-  const skillGapPx = 54;   // gap between skill rows
-  const lblSz   = 18;
-  const valSz   = 30;
-  const rowH    = lblSz + 5 + valSz + 14;  // one stat row height = 67px
-
-  // ── Calculate card height from settled content ───────────────────────────────
-  // top pad + SLOT(19) + gap(30) + name(nameSz) + gap(10) + title(20)
-  //   + gap_to_skills(56) + skill1(19) + skillGap + skill2(19) + gap_to_div(22)
-  //   + divider(1) + statsGap(20) + 2*rowH + bottom pad
-  const cardH = cardPad + 19 + 30 + nameSz + 10 + 20 + 56
-              + 19 + skillGapPx + 19 + 22 + 1 + 20 + 2 * rowH + cardPad;
-  // ≈ 482px
-
-  const totalGap = cardGap * (slotCount - 1);
-  const cardW    = Math.floor((W - cardMg * 2 - totalGap) / slotCount);
-
-  // ── Header sizes ─────────────────────────────────────────────────────────────
-  // eyebrow(26) →+42→ title(76) →+90→ summary(30) →+56→ cards
-  const headerH = 42 + 90 + 56 + cardH;   // total block height from eyebrow top
-
-  // ── Vertical centering ───────────────────────────────────────────────────────
-  const hx        = cardMg;
-  const headerTop = Math.round((H - headerH) / 2);
-  const cardsTop  = headerTop + 42 + 90 + 56;
-
-  // ── Draw header ──────────────────────────────────────────────────────────────
-  ctx.textAlign = "left";
+  // Eyebrow
+  ctx.textAlign = "center";
   ctx.textBaseline = "top";
-
-  // DRAFT eyebrow
   ctx.fillStyle = "#c8a96e";
-  ctx.font = `600 26px "Microsoft YaHei UI", sans-serif`;
-  ctx.fillText("D R A F T", hx, headerTop);
+  ctx.font = `600 28px "Microsoft YaHei UI", sans-serif`;
+  ctx.fillText("BATTLE START", W / 2, headerY);
 
-  // Main title
+  // Title
   ctx.fillStyle = "#ffffff";
-  ctx.font = `700 76px Georgia, "Microsoft YaHei UI", serif`;
-  ctx.fillText("随机抽取本局参战选手", hx, headerTop + 42);
+  ctx.font = `700 68px Georgia, "Microsoft YaHei UI", serif`;
+  ctx.fillText("参战选手登场", W / 2, headerY + 46);
 
-  // Summary
-  const summaryText = drawStageSummaryElement.textContent ?? "";
-  if (summaryText) {
-    ctx.fillStyle = "rgba(255,255,255,0.52)";
-    ctx.font = `400 30px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(summaryText, hx, headerTop + 42 + 90);
-  }
+  // Character cards
+  const characters = entryState.characters;
+  const cardW = W - mg * 2;
+  const cardH = 130;
+  const cardGap = 14;
+  const ballR = 38;
+  const cardsTop = headerY + 46 + 80 + 32;
 
-  // ── Cards panel ──────────────────────────────────────────────────────────────
-  // Panel behind all cards
-  drawRoundRect(ctx, cardMg - 12, cardsTop - 16, W - (cardMg - 12) * 2, cardH + 32, 20);
-  ctx.fillStyle = "rgba(255,255,255,0.025)";
-  ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,0.06)";
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  characters.forEach((character, i) => {
+    const cy = cardsTop + i * (cardH + cardGap);
+    const cx = mg;
 
-  slots.forEach((slotEl, i) => {
-    const slotData = currentDrawSlots[i]?.data;
-    const settled = slotData?.settled ?? slotEl.classList.contains("settled");
-    const name = slotData?.name ?? "---";
-    const title = slotData?.title ?? "";
-    const indexLabel = slotData?.indexLabel ?? `Slot ${i + 1}`;
-    const character = settled ? CHARACTER_LIBRARY.find((c) => c.name === name) : null;
-
-    const cx = cardMg + i * (cardW + cardGap);
-    const cy = cardsTop;
-
-    // ── Card background ──
-    drawRoundRect(ctx, cx, cy, cardW, cardH, cardRd);
-    if (settled && character) {
-      const bg = ctx.createLinearGradient(cx, cy, cx + cardW * 0.6, cy + cardH);
-      bg.addColorStop(0, "rgba(28,22,10,0.97)");
-      bg.addColorStop(1, "rgba(12,12,12,0.97)");
-      ctx.fillStyle = bg;
-    } else {
-      ctx.fillStyle = "rgba(14,14,22,0.96)";
-    }
+    // Card background
+    drawRoundRect(ctx, cx, cy, cardW, cardH, 16);
+    ctx.fillStyle = "rgba(20,20,20,0.92)";
     ctx.fill();
-
-    // Card border
-    const cardColor = slotData?.color ?? character?.color;
-    ctx.strokeStyle = settled && cardColor
-      ? cardColor + "70"
-      : "rgba(255,255,255,0.10)";
-    ctx.lineWidth = settled ? 1.5 : 1;
+    ctx.strokeStyle = `${character.color}55`;
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // ── Color accent (settled only) ──
-    if (settled && character) {
-      ctx.save();
-      drawRoundRect(ctx, cx, cy, cardW, cardH, cardRd);
-      ctx.clip();
+    // Ball
+    const ballX = cx + 24 + ballR;
+    const ballY = cy + cardH / 2;
+    const ballGrad = ctx.createRadialGradient(
+      ballX - ballR * 0.35, ballY - ballR * 0.3, 0,
+      ballX, ballY, ballR,
+    );
+    ballGrad.addColorStop(0, "rgba(255,255,255,0.9)");
+    ballGrad.addColorStop(0.45, character.color);
+    ballGrad.addColorStop(1, `${character.color}aa`);
+    ctx.beginPath();
+    ctx.arc(ballX, ballY, ballR, 0, Math.PI * 2);
+    ctx.fillStyle = ballGrad;
+    ctx.fill();
 
-      // Left edge bar gradient
-      const barGrad = ctx.createLinearGradient(cx, cy, cx, cy + cardH * 0.55);
-      barGrad.addColorStop(0, character.color + "ee");
-      barGrad.addColorStop(1, character.color + "00");
-      ctx.fillStyle = barGrad;
-      ctx.fillRect(cx, cy, 4, cardH);
+    // Glow ring
+    ctx.beginPath();
+    ctx.arc(ballX, ballY, ballR + 6, 0, Math.PI * 2);
+    ctx.fillStyle = `${character.color}22`;
+    ctx.fill();
 
-      // Top glow
-      const topGlow = ctx.createLinearGradient(cx, cy, cx, cy + cardH * 0.3);
-      topGlow.addColorStop(0, character.color + "28");
-      topGlow.addColorStop(1, "transparent");
-      ctx.fillStyle = topGlow;
-      ctx.fillRect(cx, cy, cardW, cardH * 0.3);
+    // Name
+    const infoX = cx + 24 + ballR * 2 + 20;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = character.color;
+    ctx.font = `700 40px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(character.name, infoX, cy + cardH * 0.36);
 
-      ctx.restore();
-    }
+    // Title
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.font = `400 22px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(character.title, infoX, cy + cardH * 0.62);
 
-    const tx = cx + cardPad + (settled ? 6 : 0);
-    const tw = cardW - cardPad * 2 - (settled ? 6 : 0);
-
-    if (!settled) {
-      // ── Spinning state ──
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const midX = cx + cardW / 2;
-
-      ctx.fillStyle = "rgba(255,255,255,0.35)";
-      ctx.font = `600 22px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(indexLabel.toUpperCase(), midX, cy + cardPad + 10);
-
-      ctx.fillStyle = "rgba(200,200,200,0.55)";
-      ctx.font = `700 38px "Microsoft YaHei UI", sans-serif`;
-      fitText(ctx, name, cardW - 20, 38);
-      ctx.fillText(name, midX, cy + cardH / 2 - 19);
-
-      ctx.fillStyle = "rgba(255,255,255,0.25)";
-      ctx.font = `400 22px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText("抽取中...", midX, cy + cardH / 2 + 30);
-    } else {
-      // ── Settled state ──
-      ctx.textAlign = "left";
-      ctx.textBaseline = "top";
-
-      // SLOT N label
+    // Skills
+    const basicName = character.basicAttack?.name ?? "";
+    const ultName = character.ultimate?.name ?? "";
+    if (basicName || ultName) {
       ctx.fillStyle = "rgba(255,255,255,0.38)";
-      ctx.font = `600 19px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(indexLabel.toUpperCase(), tx, cy + cardPad);
-
-      // Character name — auto-fit
-      ctx.fillStyle = "#ffffff";
-      ctx.font = `700 48px "Microsoft YaHei UI", sans-serif`;
-      const nameSz = fitText(ctx, name, tw, 48, 22);
-      ctx.fillText(name, tx, cy + cardPad + 30);
-
-      // Title
-      ctx.fillStyle = "rgba(255,255,255,0.50)";
-      ctx.font = `400 20px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(title, tx, cy + cardPad + 30 + nameSz + 10);
-
-      // ── Skills ──
-      const skillsTop = cy + cardPad + 30 + nameSz + 10 + 28 + 28;
-      const basicName = slotData?.basicName ?? "—";
-      const ultName   = slotData?.ultName ?? "—";
-      const skillGap  = skillGapPx;
-
-      [["普攻", basicName], ["大招", ultName]].forEach(([label, val], si) => {
-        const sy = skillsTop + si * skillGap;
-
-        ctx.textAlign = "left";
-        ctx.textBaseline = "top";
-        ctx.fillStyle = "rgba(255,255,255,0.38)";
-        ctx.font = `500 19px "Microsoft YaHei UI", sans-serif`;
-        ctx.fillText(label, tx, sy);
-
-        ctx.textAlign = "right";
-        ctx.fillStyle = "#fff7eb";
-        ctx.font = `600 19px "Microsoft YaHei UI", sans-serif`;
-        // Trim if too long
-        let v = val;
-        while (ctx.measureText(v).width > tw - 32 && v.length > 1) v = v.slice(0, -1);
-        ctx.fillText(v, cx + cardW - cardPad, sy);
-      });
-
-      // Horizontal divider
-      const divY = skillsTop + 2 * skillGap + 22;
-      ctx.strokeStyle = "rgba(255,255,255,0.10)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(tx, divY);
-      ctx.lineTo(cx + cardW - cardPad, divY);
-      ctx.stroke();
-
-      // ── Stats grid ──
-      const hp      = slotData?.hp ?? "—";
-      const speed   = slotData?.speed ?? "—";
-      const essence = slotData?.essence ?? "—";
-      const range   = slotData?.range ?? "—";
-      const radius  = slotData?.radius ?? "—";
-
-      const statRows = [
-        [["HP", hp], ["速度", speed], ["精元", essence]],
-        [["索敌", range], ["体型", radius]],
-      ];
-
-      const colW    = tw / 3;
-      const statsTop = divY + 20;
-
-      statRows.forEach((row, ri) => {
-        row.forEach(([label, value], ci) => {
-          const sx = tx + ci * colW + colW / 2;
-          const sy = statsTop + ri * rowH;
-
-          ctx.textAlign = "center";
-          ctx.textBaseline = "top";
-          ctx.fillStyle = "rgba(255,255,255,0.38)";
-          ctx.font = `500 ${lblSz}px "Microsoft YaHei UI", sans-serif`;
-          ctx.fillText(label, sx, sy);
-
-          ctx.fillStyle = "#ffffff";
-          ctx.font = `700 ${valSz}px "Trebuchet MS", "Microsoft YaHei UI", sans-serif`;
-          ctx.fillText(value, sx, sy + lblSz + 5);
-        });
-      });
+      ctx.font = `400 19px "Microsoft YaHei UI", sans-serif`;
+      ctx.textAlign = "right";
+      const skillText = [basicName && `普攻: ${basicName}`, ultName && `大招: ${ultName}`].filter(Boolean).join("  ·  ");
+      ctx.fillText(skillText, cx + cardW - 20, cy + cardH * 0.62);
     }
   });
 
   ctx.restore();
 }
-function startDrawRecordingLoop() {
+
+function startEntryRecordingLoop() {
   if (!recordingState.active) return;
 
   const loop = () => {
-    if (!recordingState.active || !drawState.active) {
+    if (!recordingState.active || !entryState.active) {
       recordingState.drawLoopId = null;
       return;
     }
-    renderDrawOnCanvas();
+    renderEntryOnCanvas();
     recordingState.drawLoopId = requestAnimationFrame(loop);
   };
 
   recordingState.drawLoopId = requestAnimationFrame(loop);
 }
 
+function stopEntryRecordingLoop() {
+  if (recordingState.drawLoopId != null) {
+    cancelAnimationFrame(recordingState.drawLoopId);
+    recordingState.drawLoopId = null;
+  }
+}
+
+
 function resetRecordingState() {
-  stopDrawRecordingLoop();
+  stopEntryRecordingLoop();
   clearScheduledRecordingStop();
   recordingState.active = false;
   recordingState.recorder = null;
@@ -1211,202 +1082,13 @@ function stopRecordedMatch() {
   stopCanvasRecording();
 }
 
-function clearDrawTimers() {
-  drawState.intervalIds.forEach((id) => clearInterval(id));
-  drawState.timeoutIds.forEach((id) => clearTimeout(id));
-  drawState.intervalIds = [];
-  drawState.timeoutIds = [];
-}
-
-function showDrawStage() {
-  if (!recordingState.active) {
-    drawStage.classList.remove("hidden");
-  }
-}
-
-function hideDrawStage() {
-  drawStage.classList.add("hidden");
-  drawStageSummaryElement.textContent = "";
-  drawStageSlotsElement.innerHTML = "";
-}
-
-function sampleDrawRoster(poolIds, count, forcedIds = []) {
-  const forced = forcedIds.filter((id) => poolIds.includes(id)).slice(0, count);
-  const remaining = poolIds.filter((id) => !forced.includes(id));
-  const chosen = [...forced];
-
-  while (chosen.length < count && remaining.length) {
-    const index = Math.floor(Math.random() * remaining.length);
-    chosen.push(remaining.splice(index, 1)[0]);
-  }
-
-  return chosen;
-}
-
-function createDrawSlot(slotIndex) {
-  const element = document.createElement("article");
-  element.className = "draw-slot spinning";
-  element.innerHTML = `
-    <span class="draw-slot-index">Slot ${slotIndex + 1}</span>
-    <strong class="draw-slot-label">---</strong>
-    <span class="draw-slot-title">等待抽取</span>
-    <div class="draw-slot-details">
-      <div class="draw-slot-skills">
-        <div class="draw-slot-skill">
-          <span class="draw-slot-skill-label">普攻</span>
-          <span class="draw-slot-skill-name draw-slot-basic-name">—</span>
-        </div>
-        <div class="draw-slot-skill">
-          <span class="draw-slot-skill-label">大招</span>
-          <span class="draw-slot-skill-name draw-slot-ult-name">—</span>
-        </div>
-      </div>
-      <div class="draw-slot-stats">
-        <div class="draw-slot-stat">
-          <span class="draw-slot-stat-label">HP</span>
-          <span class="draw-slot-stat-value draw-slot-stat-hp">—</span>
-        </div>
-        <div class="draw-slot-stat">
-          <span class="draw-slot-stat-label">速度</span>
-          <span class="draw-slot-stat-value draw-slot-stat-speed">—</span>
-        </div>
-        <div class="draw-slot-stat">
-          <span class="draw-slot-stat-label">精元</span>
-          <span class="draw-slot-stat-value draw-slot-stat-essence">—</span>
-        </div>
-        <div class="draw-slot-stat">
-          <span class="draw-slot-stat-label">索敌</span>
-          <span class="draw-slot-stat-value draw-slot-stat-range">—</span>
-        </div>
-        <div class="draw-slot-stat">
-          <span class="draw-slot-stat-label">体型</span>
-          <span class="draw-slot-stat-value draw-slot-stat-radius">—</span>
-        </div>
-      </div>
-    </div>
-  `;
-
-  return {
-    element,
-    indexLabel: `Slot ${slotIndex + 1}`,
-    nameElement: element.querySelector(".draw-slot-label"),
-    titleElement: element.querySelector(".draw-slot-title"),
-    basicNameElement: element.querySelector(".draw-slot-basic-name"),
-    ultNameElement: element.querySelector(".draw-slot-ult-name"),
-    statHpElement: element.querySelector(".draw-slot-stat-hp"),
-    statSpeedElement: element.querySelector(".draw-slot-stat-speed"),
-    statEssenceElement: element.querySelector(".draw-slot-stat-essence"),
-    statRangeElement: element.querySelector(".draw-slot-stat-range"),
-    statRadiusElement: element.querySelector(".draw-slot-stat-radius"),
-    data: { settled: false, name: "---", title: "", indexLabel: `Slot ${slotIndex + 1}`, color: null, basicName: "—", ultName: "—", hp: "—", speed: "—", essence: "—", range: "—", radius: "—" },
-  };
-}
-
-function updateDrawSlot(slot, character, settled = false) {
-  slot.element.style.setProperty("--slot-accent", `${character.color}66`);
-  slot.element.classList.toggle("spinning", !settled);
-  slot.element.classList.toggle("settled", settled);
-  slot.nameElement.textContent = character.name;
-  slot.titleElement.textContent = character.title;
-
-  // Update JS data cache so renderDrawOnCanvas doesn't need to query DOM
-  slot.data.settled = settled;
-  slot.data.name = character.name;
-  slot.data.title = character.title;
-  slot.data.color = character.color;
-
-  if (settled) {
-    const basicName = character.basicAttack?.name ?? "—";
-    const ultName = character.ultimate?.name ?? "—";
-    slot.basicNameElement.textContent = basicName;
-    slot.ultNameElement.textContent = ultName;
-    slot.statHpElement.textContent = character.stats.maxHp;
-    slot.statSpeedElement.textContent = character.stats.speed;
-    slot.statEssenceElement.textContent = character.stats.maxEssence;
-    slot.statRangeElement.textContent = character.stats.attackRange;
-    slot.statRadiusElement.textContent = character.stats.radius;
-    slot.data.basicName = basicName;
-    slot.data.ultName = ultName;
-    slot.data.hp = String(character.stats.maxHp);
-    slot.data.speed = String(character.stats.speed);
-    slot.data.essence = String(character.stats.maxEssence);
-    slot.data.range = String(character.stats.attackRange);
-    slot.data.radius = String(character.stats.radius);
-  }
-}
-
-function runDrawSequence(poolIds, drawCount, forcedIds = []) {
-  const chosenIds = sampleDrawRoster(poolIds, drawCount, forcedIds);
-  const slotViews = [];
-
-  clearDrawTimers();
-  drawState.active = true;
-  overlay.classList.add("hidden");
-  overlay.innerHTML = "";
-  showDrawStage();
-  startDrawRecordingLoop();
-  const forcedCount = forcedIds.filter((id) => poolIds.includes(id)).length;
-  drawStageSummaryElement.textContent = forcedCount > 0
-    ? `从 ${poolIds.length} 名候选中抽取 ${drawCount} 名（含 ${forcedCount} 名必选）进入本局。`
-    : `从 ${poolIds.length} 名候选中随机抽取 ${drawCount} 名角色进入本局。`;
-  drawStageSlotsElement.innerHTML = "";
-
-  chosenIds.forEach((_, index) => {
-    const slot = createDrawSlot(index);
-    slotViews.push(slot);
-    drawStageSlotsElement.appendChild(slot.element);
-  });
-  currentDrawSlots = slotViews;
-
-  updateRosterStatus();
-  updateRecordButton();
-
-  return new Promise((resolve) => {
-    slotViews.forEach((slot, index) => {
-      const intervalId = window.setInterval(() => {
-        const randomId = poolIds[Math.floor(Math.random() * poolIds.length)];
-        const randomCharacter = getCharacterById(randomId);
-        if (randomCharacter) {
-          updateDrawSlot(slot, randomCharacter, false);
-        }
-      }, DRAW_SPIN_INTERVAL_MS);
-      drawState.intervalIds.push(intervalId);
-
-      const timeoutId = window.setTimeout(() => {
-        clearInterval(intervalId);
-        const finalCharacter = getCharacterById(chosenIds[index]);
-        if (finalCharacter) {
-          updateDrawSlot(slot, finalCharacter, true);
-        }
-
-        if (index === chosenIds.length - 1) {
-          drawStageSummaryElement.textContent =
-            `本局参战：${chosenIds.map((id) => getCharacterById(id)?.name ?? id).join("、")}`;
-        }
-      }, DRAW_SETTLE_BASE_MS + index * DRAW_SETTLE_STEP_MS);
-      drawState.timeoutIds.push(timeoutId);
-    });
-
-    const doneTimeoutId = window.setTimeout(() => {
-      stopDrawRecordingLoop();
-      drawState.active = false;
-      clearDrawTimers();
-      updateRosterStatus();
-      updateRecordButton();
-      resolve(chosenIds);
-    }, DRAW_SETTLE_BASE_MS + chosenIds.length * DRAW_SETTLE_STEP_MS + DRAW_END_HOLD_MS);
-    drawState.timeoutIds.push(doneTimeoutId);
-  });
-}
-
 async function startMatch({ record = false } = {}) {
-  if (recordingState.active || drawState.active) {
+  if (recordingState.active || entryState.active) {
     return;
   }
 
-  const poolIds = getRosterIds();
-  const drawCount = sanitizeDrawCount(matchSettings.drawCount, poolIds.length);
-  if (poolIds.length < 2 || drawCount < 2 || drawCount > poolIds.length) {
+  const selectedIds = getRosterIds();
+  if (selectedIds.length < 2) {
     return;
   }
 
@@ -1416,13 +1098,14 @@ async function startMatch({ record = false } = {}) {
 
   game.stop();
   closeRosterModal();
-  const forcedIds = [...guaranteedIds].filter((id) => poolIds.includes(id));
-  const drawnIds = await runDrawSequence(poolIds, drawCount, forcedIds);
-  const focusId = drawnIds.includes(selectedId) ? selectedId : drawnIds[0];
+  overlay.classList.add("hidden");
+  overlay.innerHTML = "";
 
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-  hideDrawStage();
-  game.start(focusId, drawnIds, {
+  await runEntryAnimation(selectedIds);
+  hideEntryStage();
+
+  const focusId = selectedIds.includes(selectedId) ? selectedId : selectedIds[0];
+  game.start(focusId, selectedIds, {
     includeEdgeHazards: matchSettings.includeEdgeHazards,
     duelTime: matchSettings.duelTime,
   });
@@ -1442,7 +1125,7 @@ const game = new ArenaGame(canvas, {
     }
   },
   onMatchStart(snapshot) {
-    hideDrawStage();
+    hideEntryStage();
     overlay.classList.add("hidden");
     overlay.innerHTML = "";
     battleFeedItems.length = 0;
@@ -1558,13 +1241,6 @@ duelTimeInput.addEventListener("change", () => {
   }
 });
 
-drawCountInput.addEventListener("change", () => {
-  matchSettings.drawCount = sanitizeDrawCount(Number(drawCountInput.value));
-  syncDrawCountInput();
-  updateRosterStatus();
-  updateRecordButton();
-});
-
 async function initDb() {
   const [allOverrides, scores] = await Promise.all([loadAllOverrides(), getLeaderboard()]);
   leaderboardScores = scores;
@@ -1672,7 +1348,6 @@ renderRoster();
 renderEditor();
 renderScoreboard(null);
 syncDuelTimeInput();
-syncDrawCountInput();
 updateHud(null);
 initDb();
 

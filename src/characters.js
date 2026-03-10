@@ -1190,7 +1190,7 @@ export const CHARACTER_LIBRARY = [
     name: "绝对零度",
     title: "极致减速",
     color: "#88ccff",
-    description: "不断向四个随机方向散射穿透型冰刺，每次命中叠加一层减速，叠满3层冻结敌人1.5秒。大招释放全屏冰霜冲击波，强制冻结所有敌人并为自身提速。",
+    description: "不断向四个随机方向散射穿透型冰刺，每次命中叠加一层减速，叠满3层冻结敌人1.5秒。大招连续释放4次平A，快速堆叠冻结层数。",
     visual: { motif: "frost" },
     stats: {
       maxHp: 120,
@@ -1212,10 +1212,7 @@ export const CHARACTER_LIBRARY = [
         freezeDuration: 1.5,
       },
       ultimate: {
-        damage: 10,
-        freezeDuration: 1.5,
-        speedBoostMultiplier: 2,
-        speedBoostDuration: 3,
+        shotDelay: 0.2,
       },
     },
     editorSections: [
@@ -1239,9 +1236,7 @@ export const CHARACTER_LIBRARY = [
       {
         title: "大招",
         fields: [
-          editableField("tuning.ultimate.damage", "冲击伤害", { min: 1, step: 1 }),
-          editableField("tuning.ultimate.speedBoostMultiplier", "自身加速", { min: 1, step: 0.1 }),
-          editableField("tuning.ultimate.speedBoostDuration", "加速时间", { min: 0.5, step: 0.1, unit: "s" }),
+          editableField("tuning.ultimate.shotDelay", "射击间隔", { min: 0.05, step: 0.05, unit: "s" }),
         ],
       },
     ],
@@ -1276,19 +1271,15 @@ export const CHARACTER_LIBRARY = [
       },
     },
     ultimate: {
-      name: "凛冬将至",
-      execute({ actor, api, enemies }) {
+      name: "寒冰连射",
+      execute({ actor, api }) {
         const tuning = actor.definition.tuning.ultimate;
-        api.emitText("凛冬", actor.position, "#b8e8ff");
-        api.shake(18, 0.32);
-        api.setSpeedMultiplier(tuning.speedBoostMultiplier, tuning.speedBoostDuration);
-        enemies.filter((e) => e.alive).forEach((enemy) => {
-          api.dealDamage(enemy, tuning.damage);
-          if (enemy.alive) {
-            api.forceFreezeTarget(enemy, tuning.freezeDuration);
-            api.emitText("冻结!", enemy.position, "#c8f0ff");
-          }
-        });
+        const fireOnce = ({ actor, api }) =>
+          actor.definition.basicAttack.execute({ actor, api });
+        fireOnce({ actor, api });
+        api.schedule(tuning.shotDelay * 1, fireOnce);
+        api.schedule(tuning.shotDelay * 2, fireOnce);
+        api.schedule(tuning.shotDelay * 3, fireOnce);
       },
     },
   }),

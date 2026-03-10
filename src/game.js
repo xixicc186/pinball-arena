@@ -7,7 +7,7 @@ import {
 const WORLD_WIDTH = 540;
 const WORLD_HEIGHT = 960;
 // 全局游戏尺度系数：小球、技能半径、炮台射程等都乘以此系数
-const GAME_SCALE = 4 / 3;
+const GAME_SCALE = 2;
 const MAX_DT = 1 / 30;
 const DEFAULT_DUEL_TIME = 45;
 const BASE_ESSENCE_INTERVAL = 3.2;

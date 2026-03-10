@@ -245,7 +245,6 @@ export class ArenaGame {
       scheduledActions: [],
       shake: { amplitude: 0, duration: 0, timeLeft: 0 },
       nextEssenceIn: 1.5,
-      nextDynamicWallIn: 10,
       announcements: [],
       deathOrder: [],
       finishOrder: [],
@@ -254,6 +253,8 @@ export class ArenaGame {
     roster.forEach((character, index) => {
       this.state.actors.push(this.spawnActor(character, index, character.id === selected.id));
     });
+
+    this.spawnDynamicWall();
 
     this.callbacks.onMatchStart?.(this.snapshot());
     this.announce(`${selected.name} 已进入角斗场。`);
@@ -422,12 +423,6 @@ export class ArenaGame {
       this.spawnEssenceBurst(6);
     }
 
-    state.nextDynamicWallIn -= dt;
-    if (state.nextDynamicWallIn <= 0) {
-      state.nextDynamicWallIn += 12;
-      this.spawnDynamicWall();
-    }
-
     state.nextEssenceIn -= dt;
     const interval = state.duelTriggered ? DUEL_ESSENCE_INTERVAL : BASE_ESSENCE_INTERVAL;
     if (state.nextEssenceIn <= 0) {
@@ -435,10 +430,6 @@ export class ArenaGame {
       if (state.essences.length < MAX_ESSENCE_ON_FIELD || state.duelTriggered) {
         this.spawnEssence();
       }
-    }
-
-    for (const wall of state.arena.walls) {
-      if (wall.dynamic) wall.spawnAge = (wall.spawnAge ?? 0) + dt;
     }
 
     this.updateShake(dt);
@@ -1827,39 +1818,14 @@ export class ArenaGame {
     ctx.save();
     ctx.lineCap = "round";
     for (const wall of arena.walls) {
-      const age = wall.spawnAge ?? Infinity;
-      const flashDuration = 0.6;
-      const isDynamic = wall.dynamic === true;
-
-      if (isDynamic && age < flashDuration) {
-        // 出现时橙色闪烁光晕
-        const t = age / flashDuration;           // 0→1
-        const glow = (1 - t) * 28;
-        ctx.shadowBlur = glow;
-        ctx.shadowColor = "rgba(255, 160, 40, 0.9)";
-        ctx.strokeStyle = `rgba(255, 180, 60, ${0.9 - t * 0.55})`;
-        ctx.lineWidth = wall.thickness + 6;
-        ctx.beginPath();
-        ctx.moveTo(wall.a.x, wall.a.y);
-        ctx.lineTo(wall.b.x, wall.b.y);
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-      }
-
-      // 轮廓
-      ctx.strokeStyle = isDynamic
-        ? "rgba(255, 200, 100, 0.45)"
-        : "rgba(235, 235, 235, 0.34)";
+      ctx.strokeStyle = "rgba(235, 235, 235, 0.34)";
       ctx.lineWidth = wall.thickness + 3;
       ctx.beginPath();
       ctx.moveTo(wall.a.x, wall.a.y);
       ctx.lineTo(wall.b.x, wall.b.y);
       ctx.stroke();
 
-      // 主体
-      ctx.strokeStyle = isDynamic
-        ? "rgba(60, 40, 10, 0.94)"
-        : "rgba(28, 28, 28, 0.92)";
+      ctx.strokeStyle = "rgba(28, 28, 28, 0.92)";
       ctx.lineWidth = wall.thickness;
       ctx.beginPath();
       ctx.moveTo(wall.a.x, wall.a.y);
@@ -2618,10 +2584,7 @@ export class ArenaGame {
       b: { x: pos.x + dx * halfLen, y: pos.y + dy * halfLen },
       thickness: 12,
       dynamic: true,
-      spawnAge: 0,
     });
-
-    this.announce("新的障碍墙出现了！");
   }
 
   renderBeams(ctx, state) {

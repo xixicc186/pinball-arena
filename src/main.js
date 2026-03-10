@@ -778,6 +778,9 @@ function runEntryOutroTransition() {
       }
     }
 
+    // 录制模式下 HTML 出场舞台是隐藏的，需从录制画布布局反算小球屏幕坐标
+    const recordingPositions = recordingState.active ? getRecordingBallScreenPositions() : null;
+
     // 捕获每个卡片小球的屏幕位置，创建飞行浮层
     const flyingBalls = Array.from(entryStageCards.children).map((card, index) => {
       const ballCanvas = card.querySelector(".entry-card-ball");
@@ -785,11 +788,20 @@ function runEntryOutroTransition() {
       if (!ballCanvas || !character) return null;
 
       const actor = actorByCharId[character.id];
-      const rect = ballCanvas.getBoundingClientRect();
-      const startSize = rect.width;
-      // 飞行起始中心点
-      const startCx = rect.left + startSize / 2;
-      const startCy = rect.top + startSize / 2;
+
+      // 录制模式：从录制画布布局计算起点；普通模式：从 HTML DOM 取位置
+      let startCx, startCy, startSize;
+      if (recordingPositions && recordingPositions[index]) {
+        const rp = recordingPositions[index];
+        startCx = rp.x;
+        startCy = rp.y;
+        startSize = rp.size;
+      } else {
+        const rect = ballCanvas.getBoundingClientRect();
+        startSize = rect.width;
+        startCx = rect.left + startSize / 2;
+        startCy = rect.top + startSize / 2;
+      }
       // 目标尺寸：actor 在屏幕上的实际直径
       const targetSize = actor ? actor.radius * cssScaleX * 2 : startSize * 0.35;
 
@@ -966,6 +978,43 @@ function runEntryAnimation(characterIds) {
   });
 }
 
+// 录制版卡片布局（单列居中），被 renderEntryOnCanvas 和 getRecordingBallScreenPositions 共用
+function getRecordingLayout(cssW, cssH, headerCy) {
+  const innerW = Math.min(cssW - 48, 860);
+  const innerX = (cssW - innerW) / 2;
+  const cardGap = 10;
+  const cardPadV = 14;
+  const cardPadH = 16;
+  const ballSize = 64;
+  const cardH = ballSize + cardPadV * 2;
+  const cardW = innerW;          // 单列：卡片占满 innerW
+  const cardsTop = headerCy + cssH * 0.09;
+  return { innerW, innerX, cardW, cardH, cardGap, cardPadV, cardPadH, ballSize, cardsTop };
+}
+
+// 返回录制画布上每个小球的屏幕坐标（用于飞行动画起点）
+function getRecordingBallScreenPositions() {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.width / dpr;
+  const cssH = canvas.height / dpr;
+  const headerCy = cssH * 0.11;
+  const { innerX, cardH, cardGap, cardPadH, ballSize, cardsTop } =
+    getRecordingLayout(cssW, cssH, headerCy);
+
+  const canvasRect = canvas.getBoundingClientRect();
+
+  return entryState.characters.map((_, i) => {
+    // 小球中心在 CSS 坐标系中的位置（与 renderEntryOnCanvas 完全一致）
+    const ballCx = innerX + cardPadH + ballSize / 2;
+    const ballCy = cardsTop + i * (cardH + cardGap) + cardH / 2;
+    return {
+      x: canvasRect.left + ballCx,
+      y: canvasRect.top + ballCy,
+      size: ballSize,
+    };
+  });
+}
+
 function renderEntryOnCanvas() {
   if (!recordingState.active) return;
   const ctx = canvas.getContext("2d");
@@ -1004,24 +1053,14 @@ function renderEntryOnCanvas() {
   ctx.font = `700 ${titleSize}px Georgia, "Microsoft YaHei UI", serif`;
   ctx.fillText("参战选手登场", W / 2, headerCy + H * 0.015);
 
-  // ── 卡片区（匹配 .entry-stage-cards grid + .entry-card）──
+  // ── 卡片区（单列居中）──
   const characters = entryState.characters;
-  const innerW = Math.min(W - 48, 860);
-  const innerX = (W - innerW) / 2;
-  const cols = innerW > 580 ? 2 : 1;
-  const cardGap = 10;
-  const cardPadV = 14;
-  const cardPadH = 16;
-  const ballSize = 64;          // 匹配 CSS .entry-card-ball
-  const cardH = ballSize + cardPadV * 2;
-  const cardW = (innerW - (cols - 1) * cardGap) / cols;
-  const cardsTop = headerCy + H * 0.09;
+  const { innerX, cardW, cardH, cardGap, cardPadV, cardPadH, ballSize, cardsTop } =
+    getRecordingLayout(W, H, headerCy);
 
   characters.forEach((character, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    const cardX = innerX + col * (cardW + cardGap);
-    const cardY = cardsTop + row * (cardH + cardGap);
+    const cardX = innerX;       // 单列，始终居左（innerX 已居中）
+    const cardY = cardsTop + i * (cardH + cardGap);
 
     // 卡片入场动画（匹配 @keyframes entry-card-in：opacity+translateY，stagger delay）
     const cardStartMs = i * ENTRY_CARD_STAGGER_MS;

@@ -215,9 +215,9 @@ function renderRoster() {
           </div>
         </div>
         <div class="card-controls">
-          <span class="card-toggle${selected ? \" active\" : \" ghost\"}"></span>
-          <span class="card-toggle${included ? \" active\" : \" ghost\"}"></span>
-          <span class="card-toggle${guaranteed ? \" guaranteed\" : \" ghost\"}"></span>
+          <span class="card-toggle${selected ? " active" : " ghost"}"></span>
+          <span class="card-toggle${included ? " active" : " ghost"}"></span>
+          <span class="card-toggle${guaranteed ? " guaranteed" : " ghost"}"></span>
         </div>
       </div>
       <p class="card-desc">${character.description}</p>

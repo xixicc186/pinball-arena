@@ -802,13 +802,42 @@ function renderDrawOnCanvas() {
   ctx.fillStyle = grd2;
   ctx.fillRect(0, 0, W, H);
 
-  // ── Header ──────────────────────────────────────────────────────────────────
-  const hx = 52;
-  const headerTop = 160;
+  // ── Layout constants (fixed, not derived from cardH) ────────────────────────
+  const cardMg  = 28;
+  const cardGap = 14;
+  const cardRd  = 14;
+  const cardPad = 20;
+  const nameSz  = 48;
+  const skillGapPx = 54;   // gap between skill rows
+  const lblSz   = 18;
+  const valSz   = 30;
+  const rowH    = lblSz + 5 + valSz + 14;  // one stat row height = 67px
 
-  // DRAFT eyebrow
+  // ── Calculate card height from settled content ───────────────────────────────
+  // top pad + SLOT(19) + gap(30) + name(nameSz) + gap(10) + title(20)
+  //   + gap_to_skills(56) + skill1(19) + skillGap + skill2(19) + gap_to_div(22)
+  //   + divider(1) + statsGap(20) + 2*rowH + bottom pad
+  const cardH = cardPad + 19 + 30 + nameSz + 10 + 20 + 56
+              + 19 + skillGapPx + 19 + 22 + 1 + 20 + 2 * rowH + cardPad;
+  // ≈ 482px
+
+  const totalGap = cardGap * (slotCount - 1);
+  const cardW    = Math.floor((W - cardMg * 2 - totalGap) / slotCount);
+
+  // ── Header sizes ─────────────────────────────────────────────────────────────
+  // eyebrow(26) →+42→ title(76) →+90→ summary(30) →+56→ cards
+  const headerH = 42 + 90 + 56 + cardH;   // total block height from eyebrow top
+
+  // ── Vertical centering ───────────────────────────────────────────────────────
+  const hx        = cardMg;
+  const headerTop = Math.round((H - headerH) / 2);
+  const cardsTop  = headerTop + 42 + 90 + 56;
+
+  // ── Draw header ──────────────────────────────────────────────────────────────
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
+
+  // DRAFT eyebrow
   ctx.fillStyle = "#c8a96e";
   ctx.font = `600 26px "Microsoft YaHei UI", sans-serif`;
   ctx.fillText("D R A F T", hx, headerTop);
@@ -826,19 +855,9 @@ function renderDrawOnCanvas() {
     ctx.fillText(summaryText, hx, headerTop + 42 + 90);
   }
 
-  // ── Cards panel ─────────────────────────────────────────────────────────────
-  const cardMg = 28;
-  const cardGap = 14;
-  const cardsTop = headerTop + 42 + 90 + 56;
-  const cardsBottom = H - 120;
-  const cardH = cardsBottom - cardsTop;
-  const totalGap = cardGap * (slotCount - 1);
-  const cardW = Math.floor((W - cardMg * 2 - totalGap) / slotCount);
-  const cardRd = 14;
-  const cardPad = 20;
-
+  // ── Cards panel ──────────────────────────────────────────────────────────────
   // Panel behind all cards
-  drawRoundRect(ctx, cardMg - 16, cardsTop - 20, W - (cardMg - 16) * 2, cardH + 40, 20);
+  drawRoundRect(ctx, cardMg - 12, cardsTop - 16, W - (cardMg - 12) * 2, cardH + 32, 20);
   ctx.fillStyle = "rgba(255,255,255,0.025)";
   ctx.fill();
   ctx.strokeStyle = "rgba(255,255,255,0.06)";
@@ -908,16 +927,16 @@ function renderDrawOnCanvas() {
 
       ctx.fillStyle = "rgba(255,255,255,0.35)";
       ctx.font = `600 22px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(indexLabel.toUpperCase(), midX, cy + cardH * 0.22);
+      ctx.fillText(indexLabel.toUpperCase(), midX, cy + cardPad + 10);
 
       ctx.fillStyle = "rgba(200,200,200,0.55)";
       ctx.font = `700 38px "Microsoft YaHei UI", sans-serif`;
       fitText(ctx, name, cardW - 20, 38);
-      ctx.fillText(name, midX, cy + cardH * 0.48);
+      ctx.fillText(name, midX, cy + cardH / 2 - 19);
 
       ctx.fillStyle = "rgba(255,255,255,0.25)";
       ctx.font = `400 22px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText("抽取中...", midX, cy + cardH * 0.66);
+      ctx.fillText("抽取中...", midX, cy + cardH / 2 + 30);
     } else {
       // ── Settled state ──
       ctx.textAlign = "left";
@@ -943,7 +962,7 @@ function renderDrawOnCanvas() {
       const skillsTop = cy + cardPad + 30 + nameSz + 10 + 28 + 28;
       const basicName = slotEl.querySelector(".draw-slot-basic-name")?.textContent ?? "—";
       const ultName   = slotEl.querySelector(".draw-slot-ult-name")?.textContent ?? "—";
-      const skillGap  = Math.min(62, Math.round(cardH * 0.075));
+      const skillGap  = skillGapPx;
 
       [["普攻", basicName], ["大招", ultName]].forEach(([label, val], si) => {
         const sy = skillsTop + si * skillGap;
@@ -985,9 +1004,6 @@ function renderDrawOnCanvas() {
       ];
 
       const colW    = tw / 3;
-      const rowH    = Math.min(84, Math.round(cardH * 0.10));
-      const lblSz   = Math.min(18, Math.round(cardH * 0.022));
-      const valSz   = Math.min(30, Math.round(cardH * 0.038));
       const statsTop = divY + 20;
 
       statRows.forEach((row, ri) => {
@@ -1015,7 +1031,7 @@ function startDrawRecordingLoop() {
   if (!recordingState.active) return;
 
   const loop = () => {
-    if (!recordingState.active || drawStage.classList.contains("hidden")) {
+    if (!recordingState.active || !drawState.active) {
       recordingState.drawLoopId = null;
       return;
     }
@@ -1184,7 +1200,9 @@ function clearDrawTimers() {
 }
 
 function showDrawStage() {
-  drawStage.classList.remove("hidden");
+  if (!recordingState.active) {
+    drawStage.classList.remove("hidden");
+  }
 }
 
 function hideDrawStage() {

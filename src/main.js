@@ -20,6 +20,11 @@ const clearRosterButton = document.getElementById("clear-roster-button");
 const openRosterButton = document.getElementById("open-roster-button");
 const closeRosterButton = document.getElementById("close-roster-button");
 const rosterModal = document.getElementById("roster-modal");
+const openLeaderboardButton = document.getElementById("open-leaderboard-button");
+const closeLeaderboardButton = document.getElementById("close-leaderboard-button");
+const saveLeaderboardButton = document.getElementById("save-leaderboard-button");
+const leaderboardModal = document.getElementById("leaderboard-modal");
+const leaderboardRowsEl = document.getElementById("leaderboard-rows");
 const edgeSpikesToggle = document.getElementById("edge-spikes-toggle");
 const duelTimeInput = document.getElementById("duel-time-input");
 const drawCountInput = document.getElementById("draw-count-input");
@@ -1462,6 +1467,93 @@ async function initDb() {
     renderEditor();
   }
 }
+
+// ── 积分排行榜 Modal ──────────────────────────────────────────────────────────
+
+function openLeaderboardModal() {
+  renderLeaderboardModal();
+  leaderboardModal.classList.remove("hidden");
+  leaderboardModal.setAttribute("aria-hidden", "false");
+}
+
+function closeLeaderboardModal() {
+  leaderboardModal.classList.add("hidden");
+  leaderboardModal.setAttribute("aria-hidden", "true");
+}
+
+function renderLeaderboardModal() {
+  const entries = CHARACTER_LIBRARY.map((char) => ({
+    characterId: char.id,
+    name: char.name,
+    color: char.color,
+    score: leaderboardScores[char.id]?.score ?? 0,
+  })).sort((a, b) => b.score - a.score);
+
+  if (entries.length === 0) {
+    leaderboardRowsEl.innerHTML = `<tr><td colspan="4" class="leaderboard-empty">暂无积分数据</td></tr>`;
+    return;
+  }
+
+  leaderboardRowsEl.innerHTML = entries.map((entry, i) => {
+    const rank = i + 1;
+    const badgeClass = rank <= 3 ? `rank-${rank}` : "rank-other";
+    return `
+      <tr data-character-id="${entry.characterId}">
+        <td class="lb-rank"><span class="lb-rank-badge ${badgeClass}">${rank}</span></td>
+        <td class="lb-name">
+          <div class="lb-name-cell">
+            <span class="lb-color-dot" style="background:${entry.color}"></span>
+            <span class="lb-char-name">${entry.name}</span>
+          </div>
+        </td>
+        <td class="lb-score">
+          <input type="number" value="${entry.score}" min="0" step="1" data-original="${entry.score}" />
+        </td>
+        <td class="lb-actions">
+          <button type="button" data-reset-id="${entry.characterId}">清零</button>
+        </td>
+      </tr>`;
+  }).join("");
+
+  // 清零按钮
+  leaderboardRowsEl.querySelectorAll("[data-reset-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const row = btn.closest("tr");
+      const input = row.querySelector("input[type=number]");
+      if (input) input.value = "0";
+    });
+  });
+}
+
+async function saveLeaderboard() {
+  saveLeaderboardButton.disabled = true;
+  saveLeaderboardButton.textContent = "保存中…";
+
+  const rows = leaderboardRowsEl.querySelectorAll("tr[data-character-id]");
+  const updates = [];
+  rows.forEach((row) => {
+    const characterId = row.dataset.characterId;
+    const input = row.querySelector("input[type=number]");
+    if (!input) return;
+    const newScore = Math.max(0, parseInt(input.value, 10) || 0);
+    const char = CHARACTER_LIBRARY.find((c) => c.id === characterId);
+    updates.push({ characterId, name: char?.name ?? characterId, newScore });
+  });
+
+  await updateCharacterScores(updates);
+  leaderboardScores = await getLeaderboard();
+
+  saveLeaderboardButton.disabled = false;
+  saveLeaderboardButton.textContent = "保存修改";
+  renderLeaderboardModal();
+}
+
+openLeaderboardButton?.addEventListener("click", openLeaderboardModal);
+closeLeaderboardButton?.addEventListener("click", closeLeaderboardModal);
+saveLeaderboardButton?.addEventListener("click", saveLeaderboard);
+leaderboardModal?.querySelector("[data-close-leaderboard]")?.addEventListener("click", closeLeaderboardModal);
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 renderRoster();
 renderEditor();

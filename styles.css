@@ -965,3 +965,128 @@ code {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── 积分排行榜 Modal ── */
+.leaderboard-modal-panel {
+  width: min(700px, calc(100% - 32px));
+  height: auto;
+  max-height: calc(100vh - 40px);
+  grid-template-rows: auto 1fr;
+}
+
+.leaderboard-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 2px;
+}
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.leaderboard-table thead th {
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.leaderboard-table tbody tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 0.15s;
+}
+
+.leaderboard-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.leaderboard-table td {
+  padding: 10px 12px;
+  vertical-align: middle;
+}
+
+.lb-rank {
+  width: 52px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.lb-rank-badge {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  line-height: 28px;
+  text-align: center;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.lb-rank-badge.rank-1 { background: rgba(255, 215, 0, 0.2); color: #ffd700; }
+.lb-rank-badge.rank-2 { background: rgba(192, 192, 192, 0.2); color: #c0c0c0; }
+.lb-rank-badge.rank-3 { background: rgba(205, 127, 50, 0.2); color: #cd7f32; }
+.lb-rank-badge.rank-other { background: rgba(255,255,255,0.06); color: var(--muted); }
+
+.lb-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lb-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.lb-char-name {
+  font-weight: 600;
+}
+
+.lb-score input[type="number"] {
+  width: 90px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  padding: 5px 10px;
+  text-align: right;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.lb-score input[type="number"]:focus {
+  border-color: rgba(255,255,255,0.35);
+  background: rgba(255,255,255,0.1);
+}
+
+.lb-actions button {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.lb-actions button:hover {
+  background: rgba(255,255,255,0.12);
+  color: var(--text);
+}
+
+.leaderboard-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 40px 0;
+  font-size: 14px;
+}

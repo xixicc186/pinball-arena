@@ -262,19 +262,20 @@ body {
 .entry-stage-outro {
   opacity: 0;
   pointer-events: none;
-  transition: opacity 700ms ease !important;
+  /* 快速淡出：让场地迅速显现，小球在已显现的场地上飞行 */
+  transition: opacity 380ms ease !important;
 }
 
 .entry-stage-outro .entry-stage-header,
 .entry-stage-outro .entry-card-info {
   opacity: 0;
-  transition: opacity 220ms ease;
+  transition: opacity 160ms ease;
 }
 
 .entry-stage-outro .entry-card {
   border-color: transparent;
   background: transparent;
-  transition: border-color 220ms ease, background 220ms ease;
+  transition: border-color 160ms ease, background 160ms ease;
 }
 
 .entry-stage-inner {

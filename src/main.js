@@ -759,34 +759,49 @@ function hideEntryStage() {
 }
 
 function runEntryOutroTransition() {
-  entryState.outroActive = true;
-
+  // outroActive 已由 startMatch 在 game.start() 之前设置为 true
   return new Promise((resolve) => {
     const dpr = window.devicePixelRatio || 1;
     const animStart = entryState.animStart;
     const arenaCanvas = document.getElementById("arena-canvas");
     const arenaRect = arenaCanvas.getBoundingClientRect();
-    const targetCx = arenaRect.left + arenaRect.width / 2;
-    const targetCy = arenaRect.top + arenaRect.height / 2;
 
-    // 捕获每个卡片小球的屏幕位置并创建飞行浮层
+    // 游戏世界坐标 → CSS 屏幕坐标的换算比例
+    const cssScaleX = arenaRect.width / 540;   // WORLD_WIDTH = 540
+    const cssScaleY = arenaRect.height / 960;  // WORLD_HEIGHT = 960
+
+    // 建立 characterId → actor 的映射（game.state.actors 是活跃引用，位置实时更新）
+    const actorByCharId = {};
+    if (game.state && game.state.actors) {
+      for (const actor of game.state.actors) {
+        actorByCharId[actor.characterId] = actor;
+      }
+    }
+
+    // 捕获每个卡片小球的屏幕位置，创建飞行浮层
     const flyingBalls = Array.from(entryStageCards.children).map((card, index) => {
       const ballCanvas = card.querySelector(".entry-card-ball");
       const character = entryState.characters[index];
       if (!ballCanvas || !character) return null;
 
+      const actor = actorByCharId[character.id];
       const rect = ballCanvas.getBoundingClientRect();
-      const size = rect.width;
+      const startSize = rect.width;
+      // 飞行起始中心点
+      const startCx = rect.left + startSize / 2;
+      const startCy = rect.top + startSize / 2;
+      // 目标尺寸：actor 在屏幕上的实际直径
+      const targetSize = actor ? actor.radius * cssScaleX * 2 : startSize * 0.35;
 
       const flyCanvas = document.createElement("canvas");
-      flyCanvas.width = Math.round(size * dpr);
-      flyCanvas.height = Math.round(size * dpr);
+      flyCanvas.width = Math.round(startSize * dpr);
+      flyCanvas.height = Math.round(startSize * dpr);
       flyCanvas.style.cssText = `
         position: fixed;
-        left: ${rect.left}px;
-        top: ${rect.top}px;
-        width: ${size}px;
-        height: ${size}px;
+        left: ${startCx - startSize / 2}px;
+        top: ${startCy - startSize / 2}px;
+        width: ${startSize}px;
+        height: ${startSize}px;
         pointer-events: none;
         z-index: 1000;
       `;
@@ -794,44 +809,54 @@ function runEntryOutroTransition() {
       game.renderBallPreview(flyCanvas.getContext("2d"), character, elapsed);
       document.body.appendChild(flyCanvas);
 
-      return {
-        flyCanvas,
-        character,
-        startX: rect.left,
-        startY: rect.top,
-        size,
-      };
+      return { flyCanvas, character, actor, startCx, startCy, startSize, targetSize };
     }).filter(Boolean);
 
-    // 触发 CSS 转场：文字/边框先淡出，整体背景跟着淡出
+    // 触发 CSS 转场：快速淡出覆盖层，场地迅速显现
     entryStage.classList.add("entry-stage-outro");
 
-    // 动画：小球飞向场地中心
     const startTime = performance.now();
     let rafId;
 
     const animLoop = (now) => {
       const t = Math.min((now - startTime) / ENTRY_OUTRO_MS, 1);
-      // ease-in-out cubic
-      const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      // ease-out cubic：起步快，落地稳
+      const moveEase = 1 - Math.pow(1 - t, 3);
       const ballElapsed = (now - animStart) / 1000;
 
-      flyingBalls.forEach(({ flyCanvas, character, startX, startY, size }) => {
-        const currentSize = size * (1 - ease * 0.55);
-        const cx = startX + (targetCx - startX - currentSize / 2) * ease;
-        const cy = startY + (targetCy - startY - currentSize / 2) * ease;
-        const opacity = Math.max(0, 1 - ease * 1.6);
+      flyingBalls.forEach(({ flyCanvas, character, actor, startCx, startCy, startSize, targetSize }) => {
+        // 追踪 actor 的实时位置（actor.position 由游戏物理每帧更新）
+        let targetCx, targetCy;
+        if (actor && actor.alive !== false && actor.position) {
+          targetCx = arenaRect.left + actor.position.x * cssScaleX;
+          targetCy = arenaRect.top + actor.position.y * cssScaleY;
+        } else {
+          targetCx = arenaRect.left + arenaRect.width / 2;
+          targetCy = arenaRect.top + arenaRect.height / 2;
+        }
 
-        flyCanvas.style.left = `${cx}px`;
-        flyCanvas.style.top = `${cy}px`;
+        // 当前尺寸：从 startSize 线性缩小到 targetSize
+        const currentSize = startSize + (targetSize - startSize) * moveEase;
+        // 当前中心位置
+        const cx = startCx + (targetCx - startCx) * moveEase;
+        const cy = startCy + (targetCy - startCy) * moveEase;
+
+        // 透明度：前 65% 完全不透明，65%~92% 渐隐
+        const fadeStart = 0.65;
+        const fadeEnd = 0.92;
+        const opacity = t < fadeStart ? 1 : Math.max(0, 1 - (t - fadeStart) / (fadeEnd - fadeStart));
+
+        flyCanvas.style.left = `${cx - currentSize / 2}px`;
+        flyCanvas.style.top = `${cy - currentSize / 2}px`;
         flyCanvas.style.width = `${currentSize}px`;
         flyCanvas.style.height = `${currentSize}px`;
         flyCanvas.style.opacity = opacity;
 
-        // 持续渲染小球动画
-        const flyCtx = flyCanvas.getContext("2d");
-        flyCtx.clearRect(0, 0, flyCanvas.width, flyCanvas.height);
-        game.renderBallPreview(flyCtx, character, ballElapsed);
+        if (opacity > 0.02) {
+          const flyCtx = flyCanvas.getContext("2d");
+          flyCtx.clearRect(0, 0, flyCanvas.width, flyCanvas.height);
+          game.renderBallPreview(flyCtx, character, ballElapsed);
+        }
       });
 
       if (t < 1) {
@@ -1237,14 +1262,16 @@ async function startMatch({ record = false } = {}) {
 
   await runEntryAnimation(selectedIds);
 
-  // 先启动游戏（在出场舞台下方渲染），再做转场动画
+  // 必须在 game.start() 之前设置，防止 onMatchStart 同步调用 hideEntryStage() 打断转场
+  entryState.outroActive = true;
+
   const focusId = selectedIds.includes(selectedId) ? selectedId : selectedIds[0];
   game.start(focusId, selectedIds, {
     includeEdgeHazards: matchSettings.includeEdgeHazards,
     duelTime: matchSettings.duelTime,
   });
 
-  // 丝滑转场：文字/边框淡出 + 小球飞入场地
+  // 转场：场地快速显现（380ms），小球追踪各自 actor 飞入场地（850ms）
   await runEntryOutroTransition();
   hideEntryStage();
 }

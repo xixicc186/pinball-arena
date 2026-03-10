@@ -42,7 +42,7 @@ const RECORDING_BITS_PER_SECOND = 24_000_000;
 const RECORDING_END_HOLD_MS = 5000;
 const ENTRY_CARD_STAGGER_MS = 200;
 const ENTRY_HOLD_MS = 1800;
-const ENTRY_OUTRO_MS = 700;
+const ENTRY_OUTRO_MS = 1100;
 
 let selectedId = CHARACTER_LIBRARY[0].id;
 let selectedRosterIds = new Set(CHARACTER_LIBRARY.map((character) => character.id));
@@ -820,8 +820,8 @@ function runEntryOutroTransition() {
 
     const animLoop = (now) => {
       const t = Math.min((now - startTime) / ENTRY_OUTRO_MS, 1);
-      // ease-out cubic：起步快，落地稳
-      const moveEase = 1 - Math.pow(1 - t, 3);
+      // ease-in-out cubic：缓入缓出，起步温柔，落地平稳
+      const moveEase = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
       const ballElapsed = (now - animStart) / 1000;
 
       flyingBalls.forEach(({ flyCanvas, character, actor, startCx, startCy, startSize, targetSize }) => {
@@ -841,9 +841,9 @@ function runEntryOutroTransition() {
         const cx = startCx + (targetCx - startCx) * moveEase;
         const cy = startCy + (targetCy - startCy) * moveEase;
 
-        // 透明度：前 65% 完全不透明，65%~92% 渐隐
-        const fadeStart = 0.65;
-        const fadeEnd = 0.92;
+        // 透明度：前 72% 完全不透明，72%~97% 渐隐（让小球充分抵达后再消失）
+        const fadeStart = 0.72;
+        const fadeEnd = 0.97;
         const opacity = t < fadeStart ? 1 : Math.max(0, 1 - (t - fadeStart) / (fadeEnd - fadeStart));
 
         flyCanvas.style.left = `${cx - currentSize / 2}px`;

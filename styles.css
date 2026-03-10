@@ -262,8 +262,8 @@ body {
 .entry-stage-outro {
   opacity: 0;
   pointer-events: none;
-  /* 快速淡出：让场地迅速显现，小球在已显现的场地上飞行 */
-  transition: opacity 380ms ease !important;
+  /* 淡出场地：让场地在小球飞行过程中显现 */
+  transition: opacity 500ms ease !important;
 }
 
 .entry-stage-outro .entry-stage-header,

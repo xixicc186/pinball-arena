@@ -1302,6 +1302,7 @@ async function startMatch({ record = false } = {}) {
   const drawnIds = await runDrawSequence(poolIds, drawCount);
   const focusId = drawnIds.includes(selectedId) ? selectedId : drawnIds[0];
 
+  await new Promise((resolve) => setTimeout(resolve, 2000));
   hideDrawStage();
   game.start(focusId, drawnIds, {
     includeEdgeHazards: matchSettings.includeEdgeHazards,

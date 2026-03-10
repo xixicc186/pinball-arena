@@ -1200,7 +1200,10 @@ export const CHARACTER_LIBRARY = [
         freezeDuration: 1.5,
       },
       ultimate: {
+        shotCount: 4,
         shotDelay: 0.2,
+        needleCount: 8,
+        damage: 3,
       },
     },
     editorSections: [
@@ -1224,7 +1227,10 @@ export const CHARACTER_LIBRARY = [
       {
         title: "大招",
         fields: [
+          editableField("tuning.ultimate.shotCount", "发射次数", { min: 1, step: 1 }),
           editableField("tuning.ultimate.shotDelay", "射击间隔", { min: 0.05, step: 0.05, unit: "s" }),
+          editableField("tuning.ultimate.needleCount", "每次冰刺数", { min: 1, step: 1 }),
+          editableField("tuning.ultimate.damage", "冰刺伤害", { min: 1, step: 1 }),
         ],
       },
     ],
@@ -1261,13 +1267,37 @@ export const CHARACTER_LIBRARY = [
     ultimate: {
       name: "寒冰连射",
       execute({ actor, api }) {
-        const tuning = actor.definition.tuning.ultimate;
-        const fireOnce = ({ actor, api }) =>
-          actor.definition.basicAttack.execute({ actor, api });
+        const basic = actor.definition.tuning.basic;
+        const ult = actor.definition.tuning.ultimate;
+        const fireOnce = ({ actor: a, api: sApi }) => {
+          for (let i = 0; i < ult.needleCount; i += 1) {
+            const angle = Math.random() * Math.PI * 2;
+            sApi.spawnProjectile({
+              position: a.position,
+              direction: { x: Math.cos(angle), y: Math.sin(angle) },
+              speed: basic.speed,
+              radius: 4.5,
+              damage: ult.damage,
+              color: "#c8f0ff",
+              lifetime: basic.lifetime,
+              bounces: 0,
+              knockback: basic.knockback,
+              pierce: basic.pierceCount,
+              shape: "needle",
+              length: 14,
+              frostConfig: {
+                maxStacks: basic.maxStacks,
+                stackDuration: basic.stackDuration,
+                slowFactor: basic.slowFactor,
+                freezeDuration: basic.freezeDuration,
+              },
+            });
+          }
+        };
         fireOnce({ actor, api });
-        api.schedule(tuning.shotDelay * 1, fireOnce);
-        api.schedule(tuning.shotDelay * 2, fireOnce);
-        api.schedule(tuning.shotDelay * 3, fireOnce);
+        for (let s = 1; s < ult.shotCount; s += 1) {
+          api.schedule(ult.shotDelay * s, fireOnce);
+        }
       },
     },
   }),

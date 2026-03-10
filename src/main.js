@@ -50,6 +50,7 @@ const DRAW_END_HOLD_MS = 650;
 
 let selectedId = CHARACTER_LIBRARY[0].id;
 let selectedRosterIds = new Set(CHARACTER_LIBRARY.map((character) => character.id));
+let guaranteedIds = new Set();
 const matchSettings = {
   includeEdgeHazards: true,
   duelTime: DEFAULT_DUEL_TIME,
@@ -193,6 +194,7 @@ function renderRoster() {
 
   CHARACTER_LIBRARY.forEach((character) => {
     const included = selectedRosterIds.has(character.id);
+    const guaranteed = guaranteedIds.has(character.id);
     const selected = character.id === selectedId;
     const card = document.createElement("button");
     card.type = "button";
@@ -213,8 +215,9 @@ function renderRoster() {
           </div>
         </div>
         <div class="card-controls">
-          <span class="card-toggle${selected ? " active" : " ghost"}">${selected ? "姝ｅ湪缂栬緫" : "鐐规缂栬緫"}</span>
-          <span class="card-toggle${included ? " active" : " ghost"}">${included ? "鍙傛垬" : "寰呭懡"}</span>
+          <span class="card-toggle${selected ? \" active\" : \" ghost\"}"></span>
+          <span class="card-toggle${included ? \" active\" : \" ghost\"}"></span>
+          <span class="card-toggle${guaranteed ? \" guaranteed\" : \" ghost\"}"></span>
         </div>
       </div>
       <p class="card-desc">${character.description}</p>
@@ -236,6 +239,7 @@ function renderRoster() {
     const toggles = card.querySelectorAll(".card-toggle");
     toggles[0].textContent = selected ? "正在编辑" : "点击编辑";
     toggles[1].textContent = included ? "参与抽取" : "不参与抽取";
+    toggles[2].textContent = guaranteed ? "★ 必选" : "随机";
     toggles[0].addEventListener("click", (event) => {
       event.stopPropagation();
       selectedId = character.id;
@@ -247,8 +251,20 @@ function renderRoster() {
       event.stopPropagation();
       if (included) {
         selectedRosterIds.delete(character.id);
+        guaranteedIds.delete(character.id);
       } else {
         selectedRosterIds.add(character.id);
+      }
+      renderRoster();
+    });
+
+    toggles[2].addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!included) return;
+      if (guaranteed) {
+        guaranteedIds.delete(character.id);
+      } else {
+        guaranteedIds.add(character.id);
       }
       renderRoster();
     });
@@ -1211,9 +1227,10 @@ function hideDrawStage() {
   drawStageSlotsElement.innerHTML = "";
 }
 
-function sampleDrawRoster(poolIds, count) {
-  const remaining = [...poolIds];
-  const chosen = [];
+function sampleDrawRoster(poolIds, count, forcedIds = []) {
+  const forced = forcedIds.filter((id) => poolIds.includes(id)).slice(0, count);
+  const remaining = poolIds.filter((id) => !forced.includes(id));
+  const chosen = [...forced];
 
   while (chosen.length < count && remaining.length) {
     const index = Math.floor(Math.random() * remaining.length);
@@ -1298,8 +1315,8 @@ function updateDrawSlot(slot, character, settled = false) {
   }
 }
 
-function runDrawSequence(poolIds, drawCount) {
-  const chosenIds = sampleDrawRoster(poolIds, drawCount);
+function runDrawSequence(poolIds, drawCount, forcedIds = []) {
+  const chosenIds = sampleDrawRoster(poolIds, drawCount, forcedIds);
   const slotViews = [];
 
   clearDrawTimers();
@@ -1308,7 +1325,10 @@ function runDrawSequence(poolIds, drawCount) {
   overlay.innerHTML = "";
   showDrawStage();
   startDrawRecordingLoop();
-  drawStageSummaryElement.textContent = `从 ${poolIds.length} 名候选中随机抽取 ${drawCount} 名角色进入本局。`;
+  const forcedCount = forcedIds.filter((id) => poolIds.includes(id)).length;
+  drawStageSummaryElement.textContent = forcedCount > 0
+    ? `从 ${poolIds.length} 名候选中抽取 ${drawCount} 名（含 ${forcedCount} 名必选）进入本局。`
+    : `从 ${poolIds.length} 名候选中随机抽取 ${drawCount} 名角色进入本局。`;
   drawStageSlotsElement.innerHTML = "";
 
   chosenIds.forEach((_, index) => {
@@ -1375,7 +1395,8 @@ async function startMatch({ record = false } = {}) {
 
   game.stop();
   closeRosterModal();
-  const drawnIds = await runDrawSequence(poolIds, drawCount);
+  const forcedIds = [...guaranteedIds].filter((id) => poolIds.includes(id));
+  const drawnIds = await runDrawSequence(poolIds, drawCount, forcedIds);
   const focusId = drawnIds.includes(selectedId) ? selectedId : drawnIds[0];
 
   await new Promise((resolve) => setTimeout(resolve, 2000));

@@ -273,7 +273,7 @@ export class ArenaGame {
     const radius = (definition.stats.radius ?? 18) * GAME_SCALE;
     const position = this.sampleFreePoint(radius + 8);
     const direction = randomUnit();
-    const baseSpeed = definition.stats.speed * GAME_SCALE * 0.5;
+    const baseSpeed = definition.stats.speed * GAME_SCALE * 0.6;
 
     const actor = {
       id: `${definition.id}-${index}-${Math.random().toString(16).slice(2, 8)}`,
@@ -288,7 +288,7 @@ export class ArenaGame {
       velocity: scale(direction, baseSpeed),
       radius,
       baseRadius: radius,
-      stats: { ...definition.stats, speed: definition.stats.speed * GAME_SCALE * 0.5 },
+      stats: { ...definition.stats, speed: definition.stats.speed * GAME_SCALE * 0.6 },
       hp: definition.stats.maxHp,
       essence: 0,
       alive: true,

@@ -72,6 +72,8 @@ let currentMatchResult = null;
 const entryState = {
   active: false,
   outroActive: false,
+  outroStartTime: 0,
+  outroBalls: [],      // canvas-relative positions for recording-mode transition
   timeoutIds: [],
   characters: [],
   animFrameId: null,
@@ -772,10 +774,31 @@ function runEntryOutroTransition() {
 
     // 建立 characterId → actor 的映射（game.state.actors 是活跃引用，位置实时更新）
     const actorByCharId = {};
+    // 录制模式：构建 canvas 飞行小球数据，重启录制循环渲染转场
+    if (recordingState.active) {
+      const cssW = arenaCanvas.width / dpr;  // canvas 的 CSS 宽（等于 arenaRect.width）
+      const cssH = arenaCanvas.height / dpr;
+      const layout = getRecordingLayout(cssW, cssH, entryState.characters.length);
+      entryState.outroStartTime = performance.now();
+      entryState.outroBalls = entryState.characters.map((character, i) => ({
+        character,
+        actor: null,  // 在 actorByCharId 建立后填充，见下方
+        startCx: layout.innerX + layout.cardPadH + layout.ballSize / 2,
+        startCy: layout.cardsTop + i * (layout.cardH + layout.cardGap) + layout.cardH / 2,
+        startSize: layout.ballSize,
+      }));
+      startEntryRecordingLoop(); // 重启录制循环以渲染转场
+    }
     if (game.state && game.state.actors) {
       for (const actor of game.state.actors) {
         actorByCharId[actor.characterId] = actor;
       }
+    }
+    // 录制模式：回填 outroBalls 中的 actor 引用（actorByCharId 刚建好）
+    if (recordingState.active) {
+      entryState.outroBalls.forEach((ball) => {
+        ball.actor = actorByCharId[ball.character.id] ?? null;
+      });
     }
 
     // 录制模式下 HTML 出场舞台是隐藏的，需从录制画布布局反算小球屏幕坐标
@@ -875,7 +898,8 @@ function runEntryOutroTransition() {
         rafId = requestAnimationFrame(animLoop);
       } else {
         flyingBalls.forEach(({ flyCanvas }) => flyCanvas.remove());
-        entryState.outroActive = false;
+        entryState.outroBalls = [];
+        entryState.outroActive = false; // 录制循环的退出条件
         resolve();
       }
     };
@@ -978,30 +1002,32 @@ function runEntryAnimation(characterIds) {
   });
 }
 
-// 录制版布局（单列居中，垂直居中），被 renderEntryOnCanvas 和 getRecordingBallScreenPositions 共用
+// 录制版布局（单列，左右贴边，卡片高度 1.5×，垂直居中）
 function getRecordingLayout(cssW, cssH, characterCount) {
-  // 尺寸随画布宽度等比缩放，让内容更大
-  const ballSize   = Math.round(Math.min(cssW * 0.13, 92));
-  const cardPadV   = Math.round(ballSize * 0.22);
-  const cardPadH   = Math.round(ballSize * 0.24);
+  // 小球 & 卡片尺寸：ballSize 按宽度等比，做到约原来 1.5× 高度
+  const ballSize   = Math.round(Math.min(cssW * 0.19, 140));
+  const cardPadV   = Math.round(ballSize * 0.24);
+  const cardPadH   = Math.round(ballSize * 0.22);
   const cardH      = ballSize + cardPadV * 2;
-  const cardGap    = Math.round(ballSize * 0.18);
-  const cardW      = Math.round(Math.min(cssW * 0.80, 660));
-  const innerX     = (cssW - cardW) / 2;
+  const cardGap    = Math.round(ballSize * 0.15);
+  // 左右贴到视频边缘（仅留 4px 边距）
+  const innerPad   = 4;
+  const cardW      = cssW - innerPad * 2;
+  const innerX     = innerPad;
 
-  // 字体尺寸
-  const eyebrowSize = Math.round(Math.min(cssW * 0.024, 18));
-  const titleSize   = Math.round(Math.min(cssW * 0.062, 50));
-  const nameSize    = Math.round(Math.min(cssW * 0.040, 30));
-  const smallSize   = Math.round(Math.min(cssW * 0.025, 17));
-  const pillSize    = Math.round(Math.min(cssW * 0.020, 14));
+  // 字体随 ballSize 同步放大
+  const eyebrowSize = Math.round(Math.min(cssW * 0.028, 22));
+  const titleSize   = Math.round(Math.min(cssW * 0.075, 62));
+  const nameSize    = Math.round(Math.min(cssW * 0.050, 40));
+  const smallSize   = Math.round(Math.min(cssW * 0.030, 22));
+  const pillSize    = Math.round(Math.min(cssW * 0.024, 17));
 
-  // 垂直居中：计算全部内容总高，从 (H - total) / 2 开始
+  // 垂直居中
   const headerGap  = Math.round(cssH * 0.04);
   const headerH    = eyebrowSize + 8 + titleSize;
   const cardsH     = characterCount * cardH + Math.max(0, characterCount - 1) * cardGap;
   const totalH     = headerH + headerGap + cardsH;
-  const contentTop = Math.max(16, (cssH - totalH) / 2);
+  const contentTop = Math.max(12, (cssH - totalH) / 2);
 
   const eyebrowY  = contentTop + eyebrowSize / 2;
   const titleY    = contentTop + eyebrowSize + 8 + titleSize / 2;
@@ -1035,8 +1061,121 @@ function getRecordingBallScreenPositions() {
   });
 }
 
+// 录制转场：游戏已完成本帧渲染，在 canvas 上叠加淡出的出场卡片 + 飞行小球
+function renderEntryOutroOnCanvas() {
+  if (!recordingState.active) return;
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.width / dpr;
+  const H = canvas.height / dpr;
+  const now = performance.now();
+  const t = Math.min((now - entryState.outroStartTime) / ENTRY_OUTRO_MS, 1);
+  const elapsed = (now - entryState.animStart) / 1000;
+
+  const layout = getRecordingLayout(W, H, entryState.characters.length);
+  const { innerX, cardW, cardH, cardGap, cardPadV, cardPadH, ballSize,
+          eyebrowSize, titleSize, nameSize, smallSize, pillSize,
+          eyebrowY, titleY, cardsTop } = layout;
+
+  ctx.save();
+  ctx.scale(dpr, dpr);
+
+  // ── 1. 淡出背景覆盖层（匹配 CSS 500ms 淡出，共 1100ms 总时长）
+  const overlayFade = Math.max(0, 1 - t * (ENTRY_OUTRO_MS / 500));
+  if (overlayFade > 0.005) {
+    ctx.globalAlpha = overlayFade * 0.88;
+    ctx.fillStyle = "#040404";
+    ctx.fillRect(0, 0, W, H);
+    const grd = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, W * 0.9);
+    grd.addColorStop(0, "rgba(255,255,255,0.07)");
+    grd.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, W, H);
+
+    // ── 2. 淡出标题和卡片（跟背景同步）
+    ctx.globalAlpha = overlayFade;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#f3d2a2";
+    ctx.font = `600 ${eyebrowSize}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText("B A T T L E   S T A R T", W / 2, eyebrowY);
+    ctx.fillStyle = "#f3f3f3";
+    ctx.font = `700 ${titleSize}px Georgia, "Microsoft YaHei UI", serif`;
+    ctx.fillText("参战选手登场", W / 2, titleY);
+
+    entryState.characters.forEach((character, i) => {
+      const cardX = innerX;
+      const cardY = cardsTop + i * (cardH + cardGap);
+      drawRoundRect(ctx, cardX, cardY, cardW, cardH, 18);
+      ctx.fillStyle = "rgba(255,255,255,0.04)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.1)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      const ballCx = cardX + cardPadH + ballSize / 2;
+      const ballCy = cardY + cardH / 2;
+      const offCanvas = document.createElement("canvas");
+      offCanvas.width = Math.round(ballSize * dpr);
+      offCanvas.height = Math.round(ballSize * dpr);
+      game.renderBallPreview(offCanvas.getContext("2d"), character, elapsed);
+      ctx.drawImage(offCanvas, ballCx - ballSize / 2, ballCy - ballSize / 2, ballSize, ballSize);
+
+      const infoX = cardX + cardPadH + ballSize + Math.round(ballSize * 0.22);
+      const infoMaxW = cardX + cardW - cardPadH - infoX;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillStyle = character.color;
+      ctx.font = `700 ${nameSize}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(character.name, infoX, cardY + cardPadV, infoMaxW);
+      ctx.fillStyle = "#a6a6a6";
+      ctx.font = `400 ${smallSize}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(character.title, infoX, cardY + cardPadV + nameSize + 4, infoMaxW);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // ── 3. 飞行小球（canvas 版，独立透明度，匹配 HTML DOM 版参数）
+  const moveEase = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const fadeStart = 0.72;
+  const fadeEnd = 0.97;
+  const ballOpacity = t < fadeStart ? 1 : Math.max(0, 1 - (t - fadeStart) / (fadeEnd - fadeStart));
+
+  if (ballOpacity > 0.02) {
+    entryState.outroBalls.forEach(({ character, actor, startCx, startCy, startSize }) => {
+      // actor 位置（游戏坐标）→ canvas CSS 坐标
+      const targetX = actor ? actor.position.x * (W / 540) : W / 2;
+      const targetY = actor ? actor.position.y * (H / 960) : H / 2;
+      const targetSize = actor ? actor.radius * (W / 540) * 2 : startSize * 0.35;
+
+      const currentSize = startSize + (targetSize - startSize) * moveEase;
+      const cx = startCx + (targetX - startCx) * moveEase;
+      const cy = startCy + (targetY - startCy) * moveEase;
+
+      const offCanvas = document.createElement("canvas");
+      offCanvas.width = Math.round(startSize * dpr);
+      offCanvas.height = Math.round(startSize * dpr);
+      game.renderBallPreview(offCanvas.getContext("2d"), character, elapsed);
+
+      ctx.save();
+      ctx.globalAlpha = ballOpacity;
+      ctx.drawImage(offCanvas, cx - currentSize / 2, cy - currentSize / 2, currentSize, currentSize);
+      ctx.restore();
+    });
+  }
+
+  ctx.restore();
+}
+
 function renderEntryOnCanvas() {
   if (!recordingState.active) return;
+  // 转场阶段：游戏已渲染本帧，叠加淡出覆盖层 + canvas 飞行小球
+  if (entryState.outroActive) {
+    renderEntryOutroOnCanvas();
+    return;
+  }
+  if (!entryState.active) return;
+
   const ctx = canvas.getContext("2d");
   const dpr = window.devicePixelRatio || 1;
   // 以 CSS 像素为单位绘制，最后由 dpr scale 映射到设备像素
@@ -1173,9 +1312,11 @@ function renderEntryOnCanvas() {
 
 function startEntryRecordingLoop() {
   if (!recordingState.active) return;
+  stopEntryRecordingLoop(); // 防止重复启动
 
   const loop = () => {
-    if (!recordingState.active || !entryState.active) {
+    // 继续到 active（出场动画）和 outroActive（转场动画）都结束为止
+    if (!recordingState.active || (!entryState.active && !entryState.outroActive)) {
       recordingState.drawLoopId = null;
       return;
     }

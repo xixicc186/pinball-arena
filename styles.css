@@ -339,10 +339,6 @@ body {
   color: rgba(255, 255, 255, 0.5);
   line-height: 1.5;
   margin-bottom: 8px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 .entry-card-skills {

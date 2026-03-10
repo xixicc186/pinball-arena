@@ -978,18 +978,40 @@ function runEntryAnimation(characterIds) {
   });
 }
 
-// 录制版卡片布局（单列居中），被 renderEntryOnCanvas 和 getRecordingBallScreenPositions 共用
-function getRecordingLayout(cssW, cssH, headerCy) {
-  const innerW = Math.min(cssW - 48, 860);
-  const innerX = (cssW - innerW) / 2;
-  const cardGap = 10;
-  const cardPadV = 14;
-  const cardPadH = 16;
-  const ballSize = 64;
-  const cardH = ballSize + cardPadV * 2;
-  const cardW = innerW;          // 单列：卡片占满 innerW
-  const cardsTop = headerCy + cssH * 0.09;
-  return { innerW, innerX, cardW, cardH, cardGap, cardPadV, cardPadH, ballSize, cardsTop };
+// 录制版布局（单列居中，垂直居中），被 renderEntryOnCanvas 和 getRecordingBallScreenPositions 共用
+function getRecordingLayout(cssW, cssH, characterCount) {
+  // 尺寸随画布宽度等比缩放，让内容更大
+  const ballSize   = Math.round(Math.min(cssW * 0.13, 92));
+  const cardPadV   = Math.round(ballSize * 0.22);
+  const cardPadH   = Math.round(ballSize * 0.24);
+  const cardH      = ballSize + cardPadV * 2;
+  const cardGap    = Math.round(ballSize * 0.18);
+  const cardW      = Math.round(Math.min(cssW * 0.80, 660));
+  const innerX     = (cssW - cardW) / 2;
+
+  // 字体尺寸
+  const eyebrowSize = Math.round(Math.min(cssW * 0.024, 18));
+  const titleSize   = Math.round(Math.min(cssW * 0.062, 50));
+  const nameSize    = Math.round(Math.min(cssW * 0.040, 30));
+  const smallSize   = Math.round(Math.min(cssW * 0.025, 17));
+  const pillSize    = Math.round(Math.min(cssW * 0.020, 14));
+
+  // 垂直居中：计算全部内容总高，从 (H - total) / 2 开始
+  const headerGap  = Math.round(cssH * 0.04);
+  const headerH    = eyebrowSize + 8 + titleSize;
+  const cardsH     = characterCount * cardH + Math.max(0, characterCount - 1) * cardGap;
+  const totalH     = headerH + headerGap + cardsH;
+  const contentTop = Math.max(16, (cssH - totalH) / 2);
+
+  const eyebrowY  = contentTop + eyebrowSize / 2;
+  const titleY    = contentTop + eyebrowSize + 8 + titleSize / 2;
+  const cardsTop  = contentTop + headerH + headerGap;
+
+  return {
+    innerX, cardW, cardH, cardGap, cardPadV, cardPadH, ballSize,
+    eyebrowSize, titleSize, nameSize, smallSize, pillSize,
+    eyebrowY, titleY, cardsTop,
+  };
 }
 
 // 返回录制画布上每个小球的屏幕坐标（用于飞行动画起点）
@@ -997,14 +1019,12 @@ function getRecordingBallScreenPositions() {
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.width / dpr;
   const cssH = canvas.height / dpr;
-  const headerCy = cssH * 0.11;
   const { innerX, cardH, cardGap, cardPadH, ballSize, cardsTop } =
-    getRecordingLayout(cssW, cssH, headerCy);
+    getRecordingLayout(cssW, cssH, entryState.characters.length);
 
   const canvasRect = canvas.getBoundingClientRect();
 
   return entryState.characters.map((_, i) => {
-    // 小球中心在 CSS 坐标系中的位置（与 renderEntryOnCanvas 完全一致）
     const ballCx = innerX + cardPadH + ballSize / 2;
     const ballCy = cardsTop + i * (cardH + cardGap) + cardH / 2;
     return {
@@ -1037,43 +1057,42 @@ function renderEntryOnCanvas() {
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, W, H);
 
-  // ── 标题区（匹配 .entry-stage-header）──
-  const headerCy = H * 0.11;
+  // ── 统一布局（垂直居中、比例放大）──
+  const characters = entryState.characters;
+  const {
+    innerX, cardW, cardH, cardGap, cardPadV, cardPadH, ballSize,
+    eyebrowSize, titleSize, nameSize, smallSize, pillSize,
+    eyebrowY, titleY, cardsTop,
+  } = getRecordingLayout(W, H, characters.length);
+
+  // ── 标题区 ──
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  // Eyebrow (.entry-eyebrow: #f3d2a2, letter-spacing 0.28em, uppercase)
   ctx.fillStyle = "#f3d2a2";
-  ctx.font = `600 ${Math.round(W * 0.02)}px "Microsoft YaHei UI", sans-serif`;
-  ctx.fillText("B A T T L E   S T A R T", W / 2, headerCy - H * 0.045);
+  ctx.font = `600 ${eyebrowSize}px "Microsoft YaHei UI", sans-serif`;
+  ctx.fillText("B A T T L E   S T A R T", W / 2, eyebrowY);
 
-  // 主标题 (h2: serif, clamp size)
   ctx.fillStyle = "#f3f3f3";
-  const titleSize = Math.round(Math.max(22, Math.min(W * 0.05, 34)));
   ctx.font = `700 ${titleSize}px Georgia, "Microsoft YaHei UI", serif`;
-  ctx.fillText("参战选手登场", W / 2, headerCy + H * 0.015);
+  ctx.fillText("参战选手登场", W / 2, titleY);
 
-  // ── 卡片区（单列居中）──
-  const characters = entryState.characters;
-  const { innerX, cardW, cardH, cardGap, cardPadV, cardPadH, ballSize, cardsTop } =
-    getRecordingLayout(W, H, headerCy);
-
+  // ── 卡片区 ──
   characters.forEach((character, i) => {
-    const cardX = innerX;       // 单列，始终居左（innerX 已居中）
+    const cardX = innerX;
     const cardY = cardsTop + i * (cardH + cardGap);
 
-    // 卡片入场动画（匹配 @keyframes entry-card-in：opacity+translateY，stagger delay）
-    const cardStartMs = i * ENTRY_CARD_STAGGER_MS;
-    const cardElapsedMs = elapsedMs - cardStartMs;
+    // 入场动画（stagger slide-in）
+    const cardElapsedMs = elapsedMs - i * ENTRY_CARD_STAGGER_MS;
     if (cardElapsedMs <= 0) return;
     const animT = Math.min(cardElapsedMs / 380, 1);
-    const ease = 1 - Math.pow(1 - animT, 3); // ease-out cubic
+    const ease = 1 - Math.pow(1 - animT, 3);
 
     ctx.save();
     ctx.globalAlpha = ease;
     ctx.translate(0, (1 - ease) * 18);
 
-    // 卡片背景（匹配 .entry-card: border + linear-gradient bg）
+    // 卡片背景
     drawRoundRect(ctx, cardX, cardY, cardW, cardH, 18);
     ctx.fillStyle = "rgba(255,255,255,0.04)";
     ctx.fill();
@@ -1081,9 +1100,8 @@ function renderEntryOnCanvas() {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // ── 小球预览（使用 game.renderBallPreview，与 HTML 完全一致）──
-    const ballPad = cardPadH;
-    const ballCx = cardX + ballPad + ballSize / 2;
+    // 小球预览
+    const ballCx = cardX + cardPadH + ballSize / 2;
     const ballCy = cardY + cardH / 2;
     const offCanvas = document.createElement("canvas");
     offCanvas.width = Math.round(ballSize * dpr);
@@ -1091,65 +1109,54 @@ function renderEntryOnCanvas() {
     game.renderBallPreview(offCanvas.getContext("2d"), character, elapsed);
     ctx.drawImage(offCanvas, ballCx - ballSize / 2, ballCy - ballSize / 2, ballSize, ballSize);
 
-    // ── 文字信息区（匹配 .entry-card-info）──
-    const infoX = cardX + ballPad + ballSize + 16;
+    // 文字信息
+    const infoX = cardX + cardPadH + ballSize + Math.round(ballSize * 0.22);
     const infoMaxW = cardX + cardW - cardPadH - infoX;
 
-    // 角色名（.entry-card-name: 20px 700, 角色色）
-    const nameSize = Math.round(Math.min(20, W * 0.028));
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillStyle = character.color;
     ctx.font = `700 ${nameSize}px "Microsoft YaHei UI", sans-serif`;
     ctx.fillText(character.name, infoX, cardY + cardPadV, infoMaxW);
 
-    // 职称（.entry-card-title: 12px, muted #a6a6a6）
-    const smallSize = Math.round(Math.min(12, W * 0.017));
     ctx.fillStyle = "#a6a6a6";
     ctx.font = `400 ${smallSize}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(character.title, infoX, cardY + cardPadV + nameSize + 3, infoMaxW);
+    ctx.fillText(character.title, infoX, cardY + cardPadV + nameSize + 4, infoMaxW);
 
-    // 描述（.entry-card-desc: 12px, 0.5 opacity）
     if (character.description) {
       ctx.fillStyle = "rgba(255,255,255,0.5)";
-      ctx.font = `400 ${smallSize}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(character.description, infoX, cardY + cardPadV + nameSize + 3 + smallSize + 6, infoMaxW);
+      ctx.fillText(character.description, infoX, cardY + cardPadV + nameSize + 4 + smallSize + 5, infoMaxW);
     }
 
-    // 技能标签（匹配 .entry-skill pill 样式）
+    // 技能 pill 标签
     const basicName = character.basicAttack?.name ?? "";
-    const ultName = character.ultimate?.name ?? "";
+    const ultName   = character.ultimate?.name ?? "";
     const skills = [
       basicName ? { label: "普攻", name: basicName } : null,
-      ultName ? { label: "大招", name: ultName } : null,
+      ultName   ? { label: "大招", name: ultName   } : null,
     ].filter(Boolean);
 
     if (skills.length) {
-      const pillSize = Math.round(Math.min(11, W * 0.016));
       ctx.font = `400 ${pillSize}px "Microsoft YaHei UI", sans-serif`;
       const pillH = pillSize + 8;
-      const pillR = pillH / 2;
       const skillY = cardY + cardH - cardPadV - pillH / 2;
       let skillX = infoX;
 
       skills.forEach(({ label, name }) => {
-        // 匹配 .entry-skill-label + .entry-skill-name 格式
         const labelW = ctx.measureText(label).width;
-        const nameW = ctx.measureText(name).width;
-        const pillW = labelW + nameW + 16 + 6; // padding + gap
+        const nameW  = ctx.measureText(name).width;
+        const pillW  = labelW + nameW + 16 + 6;
 
-        drawRoundRect(ctx, skillX, skillY - pillH / 2, pillW, pillH, pillR);
+        drawRoundRect(ctx, skillX, skillY - pillH / 2, pillW, pillH, pillH / 2);
         ctx.fillStyle = "rgba(255,255,255,0.06)";
         ctx.fill();
         ctx.strokeStyle = "rgba(255,255,255,0.1)";
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        // label 部分（muted 色）
         ctx.textBaseline = "middle";
         ctx.fillStyle = "#a6a6a6";
         ctx.fillText(label, skillX + 8, skillY);
-        // name 部分（白色稍亮）
         ctx.fillStyle = "rgba(255,255,255,0.85)";
         ctx.fillText(name, skillX + 8 + labelW + 6, skillY);
 

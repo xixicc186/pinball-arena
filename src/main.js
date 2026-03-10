@@ -903,21 +903,25 @@ function getRecordingLayout(cssW, cssH, characterCount) {
   // 联立：ballSize = 36 × 2 × cssW / (540 × 0.76) ≈ cssW / 5.7
   // 再乘 1.35 整体放大，让卡片内容更饱满
   const ballSize   = Math.round(cssW / 5.7 * 1.0);
+  // 统一卡片文字字号
+  const textSize   = Math.round(Math.min(cssW * 0.044, 36));
+  const lineH      = Math.round(textSize * 1.55);
+  const pillSize   = Math.round(Math.min(cssW * 0.030, 24));
+  const pillH      = pillSize + 8;
   const cardPadV   = Math.round(ballSize * 0.28);
   const cardPadH   = Math.round(ballSize * 0.26);
-  const cardH      = ballSize + cardPadV * 2;
+  // 卡片高度：容纳 3 行文字 + 技能行，或球高，取较大值
+  const textContentH = lineH * 3 + pillH + 10;
+  const cardH      = Math.max(ballSize, textContentH) + cardPadV * 2;
   const cardGap    = Math.round(ballSize * 0.16);
   // 左右贴到视频边缘（仅留 4px 边距）
   const innerPad   = 4;
   const cardW      = cssW - innerPad * 2;
   const innerX     = innerPad;
 
-  // 字体
+  // 标题区字体
   const eyebrowSize = Math.round(Math.min(cssW * 0.038, 30));
   const titleSize   = Math.round(Math.min(cssW * 0.100, 85));
-  const nameSize    = Math.round(Math.min(cssW * 0.068, 55));
-  const smallSize   = Math.round(Math.min(cssW * 0.041, 32));
-  const pillSize    = Math.round(Math.min(cssW * 0.033, 26));
 
   // 垂直居中
   const headerGap  = Math.round(cssH * 0.04);
@@ -932,9 +936,26 @@ function getRecordingLayout(cssW, cssH, characterCount) {
 
   return {
     innerX, cardW, cardH, cardGap, cardPadV, cardPadH, ballSize,
-    eyebrowSize, titleSize, nameSize, smallSize, pillSize,
+    eyebrowSize, titleSize, textSize, lineH, pillSize, pillH,
     eyebrowY, titleY, cardsTop,
   };
+}
+
+// canvas 文字换行：逐字检测，超出 maxWidth 则断行
+function wrapText(ctx, text, maxWidth) {
+  const lines = [];
+  let line = "";
+  for (const ch of text) {
+    const test = line + ch;
+    if (ctx.measureText(test).width > maxWidth && line.length > 0) {
+      lines.push(line);
+      line = ch;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
 }
 
 // 返回录制画布上每个小球的屏幕坐标（用于飞行动画起点）
@@ -971,7 +992,7 @@ function renderEntryOutroOnCanvas() {
 
   const layout = getRecordingLayout(W, H, entryState.characters.length);
   const { innerX, cardW, cardH, cardGap, cardPadV, cardPadH, ballSize,
-          eyebrowSize, titleSize, nameSize, smallSize, pillSize,
+          eyebrowSize, titleSize, textSize, lineH, pillSize, pillH,
           eyebrowY, titleY, cardsTop } = layout;
 
   ctx.save();
@@ -1020,14 +1041,21 @@ function renderEntryOutroOnCanvas() {
 
       const infoX = cardX + cardPadH + ballSize + Math.round(ballSize * 0.22);
       const infoMaxW = cardX + cardW - cardPadH - infoX;
+      const textTop = cardY + cardPadV;
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
       ctx.fillStyle = character.color;
-      ctx.font = `700 ${nameSize}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(character.name, infoX, cardY + cardPadV, infoMaxW);
+      ctx.font = `700 ${textSize}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(character.name, infoX, textTop);
       ctx.fillStyle = "#a6a6a6";
-      ctx.font = `400 ${smallSize}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(character.title, infoX, cardY + cardPadV + nameSize + 4, infoMaxW);
+      ctx.font = `400 ${textSize}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(character.title, infoX, textTop + lineH);
+      if (character.description) {
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        wrapText(ctx, character.description, infoMaxW).forEach((line, li) => {
+          ctx.fillText(line, infoX, textTop + lineH * 2 + li * lineH);
+        });
+      }
     });
     ctx.globalAlpha = 1;
   }
@@ -1097,7 +1125,7 @@ function renderEntryOnCanvas() {
   const characters = entryState.characters;
   const {
     innerX, cardW, cardH, cardGap, cardPadV, cardPadH, ballSize,
-    eyebrowSize, titleSize, nameSize, smallSize, pillSize,
+    eyebrowSize, titleSize, textSize, lineH, pillSize, pillH,
     eyebrowY, titleY, cardsTop,
   } = getRecordingLayout(W, H, characters.length);
 
@@ -1148,20 +1176,23 @@ function renderEntryOnCanvas() {
     // 文字信息
     const infoX = cardX + cardPadH + ballSize + Math.round(ballSize * 0.22);
     const infoMaxW = cardX + cardW - cardPadH - infoX;
+    const textTop = cardY + cardPadV;
 
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillStyle = character.color;
-    ctx.font = `700 ${nameSize}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(character.name, infoX, cardY + cardPadV, infoMaxW);
+    ctx.font = `700 ${textSize}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(character.name, infoX, textTop);
 
     ctx.fillStyle = "#a6a6a6";
-    ctx.font = `400 ${smallSize}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(character.title, infoX, cardY + cardPadV + nameSize + 4, infoMaxW);
+    ctx.font = `400 ${textSize}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(character.title, infoX, textTop + lineH);
 
     if (character.description) {
       ctx.fillStyle = "rgba(255,255,255,0.5)";
-      ctx.fillText(character.description, infoX, cardY + cardPadV + nameSize + 4 + smallSize + 5, infoMaxW);
+      wrapText(ctx, character.description, infoMaxW).forEach((line, li) => {
+        ctx.fillText(line, infoX, textTop + lineH * 2 + li * lineH);
+      });
     }
 
     // 技能 pill 标签
@@ -1174,7 +1205,6 @@ function renderEntryOnCanvas() {
 
     if (skills.length) {
       ctx.font = `400 ${pillSize}px "Microsoft YaHei UI", sans-serif`;
-      const pillH = pillSize + 8;
       const skillY = cardY + cardH - cardPadV - pillH / 2;
       let skillX = infoX;
 

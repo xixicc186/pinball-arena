@@ -904,9 +904,9 @@ function getRecordingLayout(cssW, cssH, characterCount) {
   // 再乘 1.35 整体放大，让卡片内容更饱满
   const ballSize   = Math.round(cssW / 5.7 * 1.0);
   // 统一卡片文字字号
-  const textSize   = Math.round(Math.min(cssW * 0.030, 20));
+  const textSize   = Math.round(Math.min(cssW * 0.0345, 23));
   const lineH      = Math.round(textSize * 1.5);
-  const pillSize   = Math.round(Math.min(cssW * 0.022, 15));
+  const pillSize   = Math.round(Math.min(cssW * 0.025, 17));
   const pillH      = pillSize + 6;
   const cardPadV   = Math.round(ballSize * 0.22);
   const cardPadH   = Math.round(ballSize * 0.22);

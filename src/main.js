@@ -764,147 +764,40 @@ function runEntryOutroTransition() {
   // outroActive 已由 startMatch 在 game.start() 之前设置为 true
   return new Promise((resolve) => {
     const dpr = window.devicePixelRatio || 1;
-    const animStart = entryState.animStart;
     const arenaCanvas = document.getElementById("arena-canvas");
-    const arenaRect = arenaCanvas.getBoundingClientRect();
 
-    // 游戏世界坐标 → CSS 屏幕坐标的换算比例
-    const cssScaleX = arenaRect.width / 540;   // WORLD_WIDTH = 540
-    const cssScaleY = arenaRect.height / 960;  // WORLD_HEIGHT = 960
-
-    // 建立 characterId → actor 的映射（game.state.actors 是活跃引用，位置实时更新）
+    // 建立 characterId → actor 的映射
     const actorByCharId = {};
-    // 录制模式：构建 canvas 飞行小球数据，重启录制循环渲染转场
-    if (recordingState.active) {
-      const cssW = arenaCanvas.width / dpr;  // canvas 的 CSS 宽（等于 arenaRect.width）
-      const cssH = arenaCanvas.height / dpr;
-      const layout = getRecordingLayout(cssW, cssH, entryState.characters.length);
-      entryState.outroStartTime = performance.now();
-      entryState.outroBalls = entryState.characters.map((character, i) => ({
-        character,
-        actor: null,  // 在 actorByCharId 建立后填充，见下方
-        startCx: layout.innerX + layout.cardPadH + layout.ballSize / 2,
-        startCy: layout.cardsTop + i * (layout.cardH + layout.cardGap) + layout.cardH / 2,
-        startSize: layout.ballSize,
-      }));
-      startEntryRecordingLoop(); // 重启录制循环以渲染转场
-    }
     if (game.state && game.state.actors) {
       for (const actor of game.state.actors) {
         actorByCharId[actor.characterId] = actor;
       }
     }
-    // 录制模式：回填 outroBalls 中的 actor 引用（actorByCharId 刚建好）
+
+    // 录制模式：构建 canvas 飞行小球数据，重启录制循环渲染转场
     if (recordingState.active) {
-      entryState.outroBalls.forEach((ball) => {
-        ball.actor = actorByCharId[ball.character.id] ?? null;
-      });
+      const cssW = arenaCanvas.width / dpr;
+      const cssH = arenaCanvas.height / dpr;
+      const layout = getRecordingLayout(cssW, cssH, entryState.characters.length);
+      entryState.outroStartTime = performance.now();
+      entryState.outroBalls = entryState.characters.map((character, i) => ({
+        character,
+        actor: actorByCharId[character.id] ?? null,
+        startCx: layout.innerX + layout.cardPadH + layout.ballSize / 2,
+        startCy: layout.cardsTop + i * (layout.cardH + layout.cardGap) + layout.cardH / 2,
+        startSize: layout.ballSize,
+      }));
+      startEntryRecordingLoop();
     }
-
-    // 录制模式下 HTML 出场舞台是隐藏的，需从录制画布布局反算小球屏幕坐标
-    const recordingPositions = recordingState.active ? getRecordingBallScreenPositions() : null;
-
-    // 捕获每个卡片小球的屏幕位置，创建飞行浮层
-    const flyingBalls = Array.from(entryStageCards.children).map((card, index) => {
-      const ballCanvas = card.querySelector(".entry-card-ball");
-      const character = entryState.characters[index];
-      if (!ballCanvas || !character) return null;
-
-      const actor = actorByCharId[character.id];
-
-      // 录制模式：从录制画布布局计算起点；普通模式：从 HTML DOM 取位置
-      let startCx, startCy, startSize;
-      if (recordingPositions && recordingPositions[index]) {
-        const rp = recordingPositions[index];
-        startCx = rp.x;
-        startCy = rp.y;
-        startSize = rp.size;
-      } else {
-        const rect = ballCanvas.getBoundingClientRect();
-        startSize = rect.width;
-        startCx = rect.left + startSize / 2;
-        startCy = rect.top + startSize / 2;
-      }
-      // 目标尺寸：actor 在屏幕上的实际直径
-      const targetSize = actor ? actor.radius * cssScaleX * 2 : startSize * 0.35;
-
-      const flyCanvas = document.createElement("canvas");
-      flyCanvas.width = Math.round(startSize * dpr);
-      flyCanvas.height = Math.round(startSize * dpr);
-      flyCanvas.style.cssText = `
-        position: fixed;
-        left: ${startCx - startSize / 2}px;
-        top: ${startCy - startSize / 2}px;
-        width: ${startSize}px;
-        height: ${startSize}px;
-        pointer-events: none;
-        z-index: 1000;
-      `;
-      const elapsed = (performance.now() - animStart) / 1000;
-      game.renderBallPreview(flyCanvas.getContext("2d"), character, elapsed);
-      document.body.appendChild(flyCanvas);
-
-      return { flyCanvas, character, actor, startCx, startCy, startSize, targetSize };
-    }).filter(Boolean);
 
     // 触发 CSS 转场：快速淡出覆盖层，场地迅速显现
     entryStage.classList.add("entry-stage-outro");
 
-    const startTime = performance.now();
-    let rafId;
-
-    const animLoop = (now) => {
-      const t = Math.min((now - startTime) / ENTRY_OUTRO_MS, 1);
-      // ease-in-out cubic：缓入缓出，起步温柔，落地平稳
-      const moveEase = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-      const ballElapsed = (now - animStart) / 1000;
-
-      flyingBalls.forEach(({ flyCanvas, character, actor, startCx, startCy, startSize, targetSize }) => {
-        // 追踪 actor 的实时位置（actor.position 由游戏物理每帧更新）
-        let targetCx, targetCy;
-        if (actor && actor.alive !== false && actor.position) {
-          targetCx = arenaRect.left + actor.position.x * cssScaleX;
-          targetCy = arenaRect.top + actor.position.y * cssScaleY;
-        } else {
-          targetCx = arenaRect.left + arenaRect.width / 2;
-          targetCy = arenaRect.top + arenaRect.height / 2;
-        }
-
-        // 当前尺寸：从 startSize 线性缩小到 targetSize
-        const currentSize = startSize + (targetSize - startSize) * moveEase;
-        // 当前中心位置
-        const cx = startCx + (targetCx - startCx) * moveEase;
-        const cy = startCy + (targetCy - startCy) * moveEase;
-
-        // 透明度：前 72% 完全不透明，72%~97% 渐隐（让小球充分抵达后再消失）
-        const fadeStart = 0.72;
-        const fadeEnd = 0.97;
-        const opacity = t < fadeStart ? 1 : Math.max(0, 1 - (t - fadeStart) / (fadeEnd - fadeStart));
-
-        flyCanvas.style.left = `${cx - currentSize / 2}px`;
-        flyCanvas.style.top = `${cy - currentSize / 2}px`;
-        flyCanvas.style.width = `${currentSize}px`;
-        flyCanvas.style.height = `${currentSize}px`;
-        flyCanvas.style.opacity = opacity;
-
-        if (opacity > 0.02) {
-          const flyCtx = flyCanvas.getContext("2d");
-          flyCtx.clearRect(0, 0, flyCanvas.width, flyCanvas.height);
-          game.renderBallPreview(flyCtx, character, ballElapsed);
-        }
-      });
-
-      if (t < 1) {
-        rafId = requestAnimationFrame(animLoop);
-      } else {
-        flyingBalls.forEach(({ flyCanvas }) => flyCanvas.remove());
-        entryState.outroBalls = [];
-        entryState.outroActive = false; // 录制循环的退出条件
-        resolve();
-      }
-    };
-
-    rafId = requestAnimationFrame(animLoop);
+    window.setTimeout(() => {
+      entryState.outroBalls = [];
+      entryState.outroActive = false;
+      resolve();
+    }, ENTRY_OUTRO_MS);
   });
 }
 
@@ -1002,14 +895,18 @@ function runEntryAnimation(characterIds) {
   });
 }
 
-// 录制版布局（单列，左右贴边，卡片高度 1.5×，垂直居中）
+// 录制版布局（单列，左右贴边，垂直居中）
 function getRecordingLayout(cssW, cssH, characterCount) {
-  // 小球 & 卡片尺寸：ballSize 按宽度等比，做到约原来 1.5× 高度
-  const ballSize   = Math.round(Math.min(cssW * 0.19, 140));
-  const cardPadV   = Math.round(ballSize * 0.24);
-  const cardPadH   = Math.round(ballSize * 0.22);
+  // ballSize：使预览球的视觉直径 = 游戏场地内默认角色球的直径
+  // renderBallPreview 将球填充到 canvas 的 38%（半径），即视觉直径 = ballSize × 0.76
+  // 游戏内直径（CSS px）= defaultRadius(36) × 2 × cssW / 540
+  // 联立：ballSize = 36 × 2 × cssW / (540 × 0.76) ≈ cssW / 5.7
+  // 再乘 1.35 整体放大，让卡片内容更饱满
+  const ballSize   = Math.round(cssW / 5.7 * 1.35);
+  const cardPadV   = Math.round(ballSize * 0.28);
+  const cardPadH   = Math.round(ballSize * 0.26);
   const cardH      = ballSize + cardPadV * 2;
-  const cardGap    = Math.round(ballSize * 0.15);
+  const cardGap    = Math.round(ballSize * 0.16);
   // 左右贴到视频边缘（仅留 4px 边距）
   const innerPad   = 4;
   const cardW      = cssW - innerPad * 2;

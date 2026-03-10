@@ -1275,6 +1275,7 @@ function resetRecordingState() {
   recordingState.latestSnapshot = null;
   recordingState.pendingMatchResult = null;
   updateRecordButton();
+  updateRosterStatus();
 }
 
 function scheduleCanvasRecordingStop() {

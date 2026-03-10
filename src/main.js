@@ -969,100 +969,157 @@ function runEntryAnimation(characterIds) {
 function renderEntryOnCanvas() {
   if (!recordingState.active) return;
   const ctx = canvas.getContext("2d");
-  const W = canvas.width;
-  const H = canvas.height;
+  const dpr = window.devicePixelRatio || 1;
+  // 以 CSS 像素为单位绘制，最后由 dpr scale 映射到设备像素
+  const W = canvas.width / dpr;
+  const H = canvas.height / dpr;
+  const elapsedMs = performance.now() - entryState.animStart;
+  const elapsed = elapsedMs / 1000;
 
   ctx.save();
+  ctx.scale(dpr, dpr);
 
-  // Background
-  ctx.fillStyle = "#080808";
+  // ── 背景（匹配 .entry-stage CSS）──
+  ctx.fillStyle = "#040404";
   ctx.fillRect(0, 0, W, H);
-
   const grd = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, W * 0.9);
   grd.addColorStop(0, "rgba(255,255,255,0.07)");
   grd.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, W, H);
 
-  const mg = 60;
-  const headerY = Math.round(H * 0.08);
-
-  // Eyebrow
+  // ── 标题区（匹配 .entry-stage-header）──
+  const headerCy = H * 0.11;
   ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  ctx.fillStyle = "#c8a96e";
-  ctx.font = `600 28px "Microsoft YaHei UI", sans-serif`;
-  ctx.fillText("BATTLE START", W / 2, headerY);
+  ctx.textBaseline = "middle";
 
-  // Title
-  ctx.fillStyle = "#ffffff";
-  ctx.font = `700 68px Georgia, "Microsoft YaHei UI", serif`;
-  ctx.fillText("参战选手登场", W / 2, headerY + 46);
+  // Eyebrow (.entry-eyebrow: #f3d2a2, letter-spacing 0.28em, uppercase)
+  ctx.fillStyle = "#f3d2a2";
+  ctx.font = `600 ${Math.round(W * 0.02)}px "Microsoft YaHei UI", sans-serif`;
+  ctx.fillText("B A T T L E   S T A R T", W / 2, headerCy - H * 0.045);
 
-  // Character cards
+  // 主标题 (h2: serif, clamp size)
+  ctx.fillStyle = "#f3f3f3";
+  const titleSize = Math.round(Math.max(22, Math.min(W * 0.05, 34)));
+  ctx.font = `700 ${titleSize}px Georgia, "Microsoft YaHei UI", serif`;
+  ctx.fillText("参战选手登场", W / 2, headerCy + H * 0.015);
+
+  // ── 卡片区（匹配 .entry-stage-cards grid + .entry-card）──
   const characters = entryState.characters;
-  const cardW = W - mg * 2;
-  const cardH = 130;
-  const cardGap = 14;
-  const ballR = 38;
-  const cardsTop = headerY + 46 + 80 + 32;
+  const innerW = Math.min(W - 48, 860);
+  const innerX = (W - innerW) / 2;
+  const cols = innerW > 580 ? 2 : 1;
+  const cardGap = 10;
+  const cardPadV = 14;
+  const cardPadH = 16;
+  const ballSize = 64;          // 匹配 CSS .entry-card-ball
+  const cardH = ballSize + cardPadV * 2;
+  const cardW = (innerW - (cols - 1) * cardGap) / cols;
+  const cardsTop = headerCy + H * 0.09;
 
   characters.forEach((character, i) => {
-    const cy = cardsTop + i * (cardH + cardGap);
-    const cx = mg;
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const cardX = innerX + col * (cardW + cardGap);
+    const cardY = cardsTop + row * (cardH + cardGap);
 
-    // Card background
-    drawRoundRect(ctx, cx, cy, cardW, cardH, 16);
-    ctx.fillStyle = "rgba(20,20,20,0.92)";
+    // 卡片入场动画（匹配 @keyframes entry-card-in：opacity+translateY，stagger delay）
+    const cardStartMs = i * ENTRY_CARD_STAGGER_MS;
+    const cardElapsedMs = elapsedMs - cardStartMs;
+    if (cardElapsedMs <= 0) return;
+    const animT = Math.min(cardElapsedMs / 380, 1);
+    const ease = 1 - Math.pow(1 - animT, 3); // ease-out cubic
+
+    ctx.save();
+    ctx.globalAlpha = ease;
+    ctx.translate(0, (1 - ease) * 18);
+
+    // 卡片背景（匹配 .entry-card: border + linear-gradient bg）
+    drawRoundRect(ctx, cardX, cardY, cardW, cardH, 18);
+    ctx.fillStyle = "rgba(255,255,255,0.04)";
     ctx.fill();
-    ctx.strokeStyle = `${character.color}55`;
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(255,255,255,0.1)";
+    ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Ball
-    const ballX = cx + 24 + ballR;
-    const ballY = cy + cardH / 2;
-    const ballGrad = ctx.createRadialGradient(
-      ballX - ballR * 0.35, ballY - ballR * 0.3, 0,
-      ballX, ballY, ballR,
-    );
-    ballGrad.addColorStop(0, "rgba(255,255,255,0.9)");
-    ballGrad.addColorStop(0.45, character.color);
-    ballGrad.addColorStop(1, `${character.color}aa`);
-    ctx.beginPath();
-    ctx.arc(ballX, ballY, ballR, 0, Math.PI * 2);
-    ctx.fillStyle = ballGrad;
-    ctx.fill();
+    // ── 小球预览（使用 game.renderBallPreview，与 HTML 完全一致）──
+    const ballPad = cardPadH;
+    const ballCx = cardX + ballPad + ballSize / 2;
+    const ballCy = cardY + cardH / 2;
+    const offCanvas = document.createElement("canvas");
+    offCanvas.width = Math.round(ballSize * dpr);
+    offCanvas.height = Math.round(ballSize * dpr);
+    game.renderBallPreview(offCanvas.getContext("2d"), character, elapsed);
+    ctx.drawImage(offCanvas, ballCx - ballSize / 2, ballCy - ballSize / 2, ballSize, ballSize);
 
-    // Glow ring
-    ctx.beginPath();
-    ctx.arc(ballX, ballY, ballR + 6, 0, Math.PI * 2);
-    ctx.fillStyle = `${character.color}22`;
-    ctx.fill();
+    // ── 文字信息区（匹配 .entry-card-info）──
+    const infoX = cardX + ballPad + ballSize + 16;
+    const infoMaxW = cardX + cardW - cardPadH - infoX;
 
-    // Name
-    const infoX = cx + 24 + ballR * 2 + 20;
+    // 角色名（.entry-card-name: 20px 700, 角色色）
+    const nameSize = Math.round(Math.min(20, W * 0.028));
     ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
+    ctx.textBaseline = "top";
     ctx.fillStyle = character.color;
-    ctx.font = `700 40px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(character.name, infoX, cy + cardH * 0.36);
+    ctx.font = `700 ${nameSize}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(character.name, infoX, cardY + cardPadV, infoMaxW);
 
-    // Title
-    ctx.fillStyle = "rgba(255,255,255,0.5)";
-    ctx.font = `400 22px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(character.title, infoX, cy + cardH * 0.62);
+    // 职称（.entry-card-title: 12px, muted #a6a6a6）
+    const smallSize = Math.round(Math.min(12, W * 0.017));
+    ctx.fillStyle = "#a6a6a6";
+    ctx.font = `400 ${smallSize}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(character.title, infoX, cardY + cardPadV + nameSize + 3, infoMaxW);
 
-    // Skills
+    // 描述（.entry-card-desc: 12px, 0.5 opacity）
+    if (character.description) {
+      ctx.fillStyle = "rgba(255,255,255,0.5)";
+      ctx.font = `400 ${smallSize}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillText(character.description, infoX, cardY + cardPadV + nameSize + 3 + smallSize + 6, infoMaxW);
+    }
+
+    // 技能标签（匹配 .entry-skill pill 样式）
     const basicName = character.basicAttack?.name ?? "";
     const ultName = character.ultimate?.name ?? "";
-    if (basicName || ultName) {
-      ctx.fillStyle = "rgba(255,255,255,0.38)";
-      ctx.font = `400 19px "Microsoft YaHei UI", sans-serif`;
-      ctx.textAlign = "right";
-      const skillText = [basicName && `普攻: ${basicName}`, ultName && `大招: ${ultName}`].filter(Boolean).join("  ·  ");
-      ctx.fillText(skillText, cx + cardW - 20, cy + cardH * 0.62);
+    const skills = [
+      basicName ? { label: "普攻", name: basicName } : null,
+      ultName ? { label: "大招", name: ultName } : null,
+    ].filter(Boolean);
+
+    if (skills.length) {
+      const pillSize = Math.round(Math.min(11, W * 0.016));
+      ctx.font = `400 ${pillSize}px "Microsoft YaHei UI", sans-serif`;
+      const pillH = pillSize + 8;
+      const pillR = pillH / 2;
+      const skillY = cardY + cardH - cardPadV - pillH / 2;
+      let skillX = infoX;
+
+      skills.forEach(({ label, name }) => {
+        // 匹配 .entry-skill-label + .entry-skill-name 格式
+        const labelW = ctx.measureText(label).width;
+        const nameW = ctx.measureText(name).width;
+        const pillW = labelW + nameW + 16 + 6; // padding + gap
+
+        drawRoundRect(ctx, skillX, skillY - pillH / 2, pillW, pillH, pillR);
+        ctx.fillStyle = "rgba(255,255,255,0.06)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.1)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // label 部分（muted 色）
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#a6a6a6";
+        ctx.fillText(label, skillX + 8, skillY);
+        // name 部分（白色稍亮）
+        ctx.fillStyle = "rgba(255,255,255,0.85)";
+        ctx.fillText(name, skillX + 8 + labelW + 6, skillY);
+
+        skillX += pillW + 6;
+        ctx.textBaseline = "top";
+      });
     }
+
+    ctx.restore();
   });
 
   ctx.restore();

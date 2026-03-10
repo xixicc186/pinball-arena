@@ -260,6 +260,8 @@ export class ArenaGame {
       shake: { amplitude: 0, duration: 0, timeLeft: 0 },
       nextEssenceIn: 1.5,
       announcements: [],
+      deathOrder: [],
+      finishOrder: [],
     };
 
     roster.forEach((character, index) => {
@@ -394,6 +396,7 @@ export class ArenaGame {
       selectedId: this.state.selectedId,
       duelTime: this.state.settings.duelTime,
       nextPhaseIn: Math.max(0, this.state.settings.duelTime - this.state.elapsed),
+      finishOrder: this.state.finishOrder,
       actors: this.state.actors.map((actor) => ({
         id: actor.id,
         characterId: actor.characterId,
@@ -1609,6 +1612,7 @@ export class ArenaGame {
     }
     target.alive = false;
     target.hp = 0;
+    this.state.deathOrder.push({ id: target.id, characterId: target.characterId, name: target.name, color: target.color });
     this.announce(
       attacker ? `${target.name} 被 ${attacker.name} 处决。` : `${target.name} 被淘汰。`,
     );
@@ -1707,10 +1711,18 @@ export class ArenaGame {
 
     this.state.matchOver = true;
     this.state.winnerId = alive[0]?.id ?? null;
+
+    // Build finish order: winner first, then deaths in reverse (last-dead = 2nd)
+    const reversedDeaths = [...this.state.deathOrder].reverse();
     if (alive[0]) {
+      this.state.finishOrder = [
+        { id: alive[0].id, characterId: alive[0].characterId, name: alive[0].name, color: alive[0].color },
+        ...reversedDeaths,
+      ];
       alive[0].highlightTime = 999;
       this.announce(`${alive[0].name} 获胜。`);
     } else {
+      this.state.finishOrder = reversedDeaths;
       this.announce("所有角色同时出局，本局无胜者。");
     }
     this.callbacks.onMatchEnd?.(this.snapshot());

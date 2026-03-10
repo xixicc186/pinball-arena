@@ -6,7 +6,7 @@
   updateCharacterValue,
 } from "./characters.js";
 import { ArenaGame } from "./game.js";
-import { clearOverrides, loadAllOverrides, saveOverrides } from "./db.js";
+import { clearOverrides, getLeaderboard, loadAllOverrides, saveOverrides, updateCharacterScores } from "./db.js";
 
 const rosterElement = document.getElementById("roster");
 const rosterStatusElement = document.getElementById("roster-status");
@@ -37,7 +37,7 @@ const DEFAULT_DUEL_TIME = 45;
 const DEFAULT_DRAW_COUNT = Math.max(2, Math.min(4, CHARACTER_LIBRARY.length));
 const RECORDING_FPS = 60;
 const RECORDING_BITS_PER_SECOND = 24_000_000;
-const RECORDING_END_HOLD_MS = 2200;
+const RECORDING_END_HOLD_MS = 5000;
 const DRAW_SPIN_INTERVAL_MS = 90;
 const DRAW_SETTLE_BASE_MS = 1200;
 const DRAW_SETTLE_STEP_MS = 320;
@@ -62,7 +62,13 @@ const recordingState = {
   stopTimeoutId: null,
   stopAnimationFrameId: null,
   drawLoopId: null,
+  pendingMatchResult: null,
 };
+
+// 排行榜：{ characterId: { name, score } }
+let leaderboardScores = {};
+// 当前对局结算结果
+let currentMatchResult = null;
 const drawState = {
   active: false,
   intervalIds: [],
@@ -561,6 +567,97 @@ function drawRecordingOverlay(ctx, width, height, margin, radius) {
   ctx.restore();
 }
 
+// 根据参赛人数计算每个名次的积分变化
+// 2人: [+1,-1]  3人: [+1,0,-1]  4人: [+2,+1,0,-1]  5人: [+2,+1,0,-1,-2] ...
+function getScoreChanges(n) {
+  if (n === 2) return [1, -1];
+  const max = Math.floor(n / 2);
+  return Array.from({ length: n }, (_, i) => max - i);
+}
+
+// 在 canvas 上绘制本场积分结算面板
+function drawMatchResultOnCanvas(ctx, W, H, matchResult) {
+  if (!matchResult || !matchResult.entries.length) return;
+
+  const entries = matchResult.entries;
+  const n = entries.length;
+
+  const mg = 32;
+  const rd = 18;
+  const headerH = Math.round(H * 0.055);
+  const rowH = Math.round(H * 0.062);
+  const pad = Math.round(W * 0.032);
+  const panelW = Math.min(Math.round(W * 0.85), W - mg * 2);
+  const panelH = headerH + rowH * n + pad;
+  const panelX = Math.round((W - panelW) / 2);
+  const panelY = Math.round((H - panelH) / 2);
+
+  ctx.save();
+
+  // 面板背景
+  fillRoundedPanel(ctx, panelX, panelY, panelW, panelH, rd);
+
+  // 标题
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#f3d2a2";
+  ctx.font = `700 ${Math.round(H * 0.022)}px "Microsoft YaHei UI", sans-serif`;
+  ctx.fillText("本场积分结算", W / 2, panelY + headerH * 0.52);
+
+  // 分隔线
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(panelX + pad, panelY + headerH);
+  ctx.lineTo(panelX + panelW - pad, panelY + headerH);
+  ctx.stroke();
+
+  const rankColors = ["#ffd700", "#c0c0c0", "#cd7f32"];
+
+  entries.forEach((entry, i) => {
+    const rowY = panelY + headerH + rowH * i;
+    const midY = rowY + rowH * 0.5;
+    const rankColor = i < 3 ? rankColors[i] : "rgba(200,200,200,0.55)";
+
+    // 名次圈
+    const rankX = panelX + pad + Math.round(W * 0.042);
+    ctx.beginPath();
+    ctx.arc(rankX, midY, Math.round(H * 0.022), 0, Math.PI * 2);
+    ctx.fillStyle = i < 3 ? rankColor + "33" : "rgba(255,255,255,0.08)";
+    ctx.fill();
+    ctx.strokeStyle = rankColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = rankColor;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `700 ${Math.round(H * 0.02)}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(`${i + 1}`, rankX, midY);
+
+    // 角色名称（带颜色）
+    ctx.fillStyle = entry.color;
+    ctx.textAlign = "left";
+    ctx.font = `600 ${Math.round(H * 0.022)}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(entry.name, panelX + pad + Math.round(W * 0.1), midY);
+
+    // 积分变化
+    const deltaText = entry.delta > 0 ? `+${entry.delta}` : `${entry.delta}`;
+    ctx.fillStyle = entry.delta > 0 ? "#4ade80" : entry.delta < 0 ? "#f87171" : "rgba(160,160,160,0.8)";
+    ctx.textAlign = "right";
+    ctx.font = `700 ${Math.round(H * 0.026)}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(deltaText, panelX + panelW - pad - Math.round(W * 0.18), midY);
+
+    // 总分
+    ctx.fillStyle = "rgba(255,247,235,0.75)";
+    ctx.textAlign = "right";
+    ctx.font = `500 ${Math.round(H * 0.017)}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(`总分 ${entry.newScore}`, panelX + panelW - pad, midY);
+  });
+
+  ctx.restore();
+}
+
 function renderRecordingFrame(snapshot = recordingState.latestSnapshot) {
   if (snapshot) {
     recordingState.latestSnapshot = snapshot;
@@ -882,6 +979,7 @@ function resetRecordingState() {
   recordingState.renderCanvas = null;
   recordingState.renderCtx = null;
   recordingState.latestSnapshot = null;
+  recordingState.pendingMatchResult = null;
   updateRecordButton();
 }
 
@@ -948,12 +1046,27 @@ function startCanvasRecording() {
       }
     });
 
-    recorder.addEventListener("stop", () => {
+    recorder.addEventListener("stop", async () => {
       const chunks = [...recordingState.chunks];
       const finalMimeType = recordingState.mimeType;
+      const pendingResult = recordingState.pendingMatchResult;
 
       recordingState.stream?.getTracks().forEach((track) => track.stop());
       resetRecordingState();
+
+      if (pendingResult) {
+        if (window.confirm("是否将本场积分写入总积分排行榜？")) {
+          await updateCharacterScores(
+            pendingResult.entries.map((e) => ({
+              characterId: e.characterId,
+              name: e.name,
+              newScore: e.newScore,
+            })),
+          );
+          // 刷新本地排行榜缓存
+          leaderboardScores = await getLeaderboard();
+        }
+      }
 
       if (chunks.length) {
         const blob = new Blob(chunks, { type: finalMimeType });
@@ -1205,6 +1318,9 @@ const game = new ArenaGame(canvas, {
     renderScoreboard(snapshot);
     recordingState.latestSnapshot = snapshot;
     renderRecordingFrame(snapshot);
+    if (snapshot.matchOver && currentMatchResult) {
+      drawMatchResultOnCanvas(canvas.getContext("2d"), canvas.width, canvas.height, currentMatchResult);
+    }
   },
   onMatchStart(snapshot) {
     hideDrawStage();
@@ -1212,6 +1328,7 @@ const game = new ArenaGame(canvas, {
     overlay.innerHTML = "";
     battleFeedItems.length = 0;
     feed.innerHTML = "";
+    currentMatchResult = null;
     updateHud(snapshot);
     renderScoreboard(snapshot);
     recordingState.latestSnapshot = snapshot;
@@ -1230,6 +1347,30 @@ const game = new ArenaGame(canvas, {
         <p class="overlay-eyebrow">Draw</p>
         <h2>本局同归于尽</h2>
       `;
+
+    // 计算本场积分结算
+    const finishOrder = snapshot.finishOrder ?? [];
+    if (finishOrder.length > 0) {
+      const deltas = getScoreChanges(finishOrder.length);
+      currentMatchResult = {
+        entries: finishOrder.map((actor, i) => ({
+          characterId: actor.characterId,
+          name: actor.name,
+          color: actor.color,
+          position: i + 1,
+          delta: deltas[i],
+          currentScore: leaderboardScores[actor.characterId]?.score ?? 0,
+          newScore: (leaderboardScores[actor.characterId]?.score ?? 0) + deltas[i],
+        })),
+      };
+    } else {
+      currentMatchResult = null;
+    }
+
+    if (recordingState.active && currentMatchResult) {
+      recordingState.pendingMatchResult = currentMatchResult;
+    }
+
     renderRecordingFrame(snapshot);
     scheduleCanvasRecordingStop();
   },
@@ -1306,7 +1447,8 @@ drawCountInput.addEventListener("change", () => {
 });
 
 async function initDb() {
-  const allOverrides = await loadAllOverrides();
+  const [allOverrides, scores] = await Promise.all([loadAllOverrides(), getLeaderboard()]);
+  leaderboardScores = scores;
   let hasChanges = false;
   for (const [characterId, overrides] of Object.entries(allOverrides)) {
     for (const [path, value] of Object.entries(overrides)) {

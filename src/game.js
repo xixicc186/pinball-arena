@@ -227,6 +227,25 @@ export class ArenaGame {
     this.lastFrame = 0;
     this.running = false;
     this.state = null;
+    this.entryTransition = false;
+  }
+
+  startEntryTransition() {
+    this.entryTransition = true;
+    if (!this.state) return;
+    for (const actor of this.state.actors) {
+      actor.velocity = { x: 0, y: 0 };
+    }
+  }
+
+  endEntryTransition() {
+    this.entryTransition = false;
+    if (!this.state) return;
+    for (const actor of this.state.actors) {
+      const dir = randomUnit();
+      const speed = actor.stats.speed * 0.6;
+      actor.velocity = { x: dir.x * speed, y: dir.y * speed };
+    }
   }
 
   start(selectedCharacterId, rosterIds = null, options = {}) {
@@ -439,6 +458,14 @@ export class ArenaGame {
       this.updateParticles(dt);
       this.updateDamageTexts(dt);
       this.updateStrikes(dt);
+      return;
+    }
+
+    // 入场转场期间：冻结所有游戏逻辑，只做视觉更新
+    if (this.entryTransition) {
+      this.updateShake(dt);
+      this.updateParticles(dt);
+      this.updateDamageTexts(dt);
       return;
     }
 
@@ -1770,7 +1797,11 @@ export class ArenaGame {
     this.renderPulses(ctx, state);
     this.renderBeams(ctx, state);
     this.renderLasers(ctx, state);
-    this.renderActors(ctx, state);
+    if (this.entryTransition) {
+      this.renderEntryMarkers(ctx, state);
+    } else {
+      this.renderActors(ctx, state);
+    }
     this.renderParticles(ctx, state);
     this.renderDamageTexts(ctx, state);
 
@@ -2156,6 +2187,45 @@ export class ArenaGame {
         Math.PI * 2,
       );
       ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  renderEntryMarkers(ctx, state) {
+    const t = performance.now() / 1000;
+    for (const actor of state.actors) {
+      const { x, y } = actor.position;
+      const r = actor.radius;
+      const pulse = 0.5 + 0.5 * Math.sin(t * 2.8);
+
+      ctx.save();
+
+      // 外圈：脉冲扩散环
+      ctx.beginPath();
+      ctx.arc(x, y, r + 3 + pulse * 6, 0, Math.PI * 2);
+      ctx.strokeStyle = actor.color;
+      ctx.globalAlpha = 0.18 + pulse * 0.22;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // 中圈：虚线落点环
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = actor.color;
+      ctx.globalAlpha = 0.55;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 5]);
+      ctx.lineDashOffset = -t * 12;
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 内圆：半透明填充
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = actor.color;
+      ctx.globalAlpha = 0.06 + pulse * 0.06;
+      ctx.fill();
+
       ctx.restore();
     }
   }

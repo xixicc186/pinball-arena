@@ -1270,9 +1270,14 @@ async function startMatch({ record = false } = {}) {
     includeEdgeHazards: matchSettings.includeEdgeHazards,
     duelTime: matchSettings.duelTime,
   });
+  // 冻结 actor（不渲染实体，只显示落点标记圈），避免转场期间场地内已有小球运动
+  game.startEntryTransition();
 
-  // 转场：场地快速显现（380ms），小球追踪各自 actor 飞入场地（850ms）
+  // 转场：场地快速显现，小球飞向各自的落点标记（冻结坐标，无偏差）
   await runEntryOutroTransition();
+
+  // 解冻：actor 获得初始速度，战斗开始
+  game.endEntryTransition();
   hideEntryStage();
 }
 

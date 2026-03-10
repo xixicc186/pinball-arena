@@ -942,21 +942,6 @@ function getRecordingLayout(cssW, cssH, characterCount) {
 }
 
 // canvas 文字换行：逐字检测，超出 maxWidth 则断行
-function wrapText(ctx, text, maxWidth) {
-  const lines = [];
-  let line = "";
-  for (const ch of text) {
-    const test = line + ch;
-    if (ctx.measureText(test).width > maxWidth && line.length > 0) {
-      lines.push(line);
-      line = ch;
-    } else {
-      line = test;
-    }
-  }
-  if (line) lines.push(line);
-  return lines;
-}
 
 // 返回录制画布上每个小球的屏幕坐标（用于飞行动画起点）
 function getRecordingBallScreenPositions() {

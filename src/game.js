@@ -166,23 +166,7 @@ function makeArena(options = {}) {
     });
   }
 
-  const walls = Array.from({ length: 3 }, (_, index) => {
-    const angle = offset + (Math.PI * 2 * index) / 3 + randomBetween(-0.14, 0.14);
-    const pivot = {
-      x: center.x + Math.cos(angle) * randomBetween(105, 150),
-      y: center.y + Math.sin(angle) * randomBetween(75, 120),
-    };
-    const direction = {
-      x: Math.cos(angle + Math.PI / 2),
-      y: Math.sin(angle + Math.PI / 2),
-    };
-    const halfLength = randomBetween(44, 64);
-    return {
-      a: add(pivot, scale(direction, -halfLength)),
-      b: add(pivot, scale(direction, halfLength)),
-      thickness: 12,
-    };
-  });
+  const walls = [];
 
   const spikes = [];
   if (includeEdgeHazards) {

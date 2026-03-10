@@ -284,7 +284,7 @@ export class ArenaGame {
 
   spawnActor(character, index, isPlayer) {
     const definition = instantiateCharacter(character);
-    const radius = definition.stats.radius ?? 18;
+    const radius = (definition.stats.radius ?? 18) * 2;
     const position = this.sampleFreePoint(radius + 8);
     const direction = randomUnit();
     const baseSpeed = definition.stats.speed;

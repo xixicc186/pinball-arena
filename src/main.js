@@ -133,12 +133,12 @@ function updateRosterStatus() {
 
   if (entryState.active) {
     startButton.disabled = true;
-    startButton.textContent = “登场中...”;
+    startButton.textContent = "登场中...";
     return;
   }
 
   startButton.disabled = !canStartMatch() || recordingState.active;
-  startButton.textContent = canStartMatch() ? “开始出战” : “至少选择 2 名角色”;
+  startButton.textContent = canStartMatch() ? "开始出战" : "至少选择 2 名角色";
 }
 
 function collectOverrides(character) {

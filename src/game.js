@@ -1737,12 +1737,8 @@ export class ArenaGame {
 
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-    const shakeAmount =
-      state.shake.timeLeft > 0
-        ? state.shake.amplitude * (state.shake.timeLeft / state.shake.duration)
-        : 0;
-    const offsetX = randomBetween(-shakeAmount, shakeAmount);
-    const offsetY = randomBetween(-shakeAmount, shakeAmount);
+    const offsetX = 0;
+    const offsetY = 0;
     const scaleX = this.canvas.width / WORLD_WIDTH;
     const scaleY = this.canvas.height / WORLD_HEIGHT;
 

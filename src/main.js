@@ -902,7 +902,7 @@ function getRecordingLayout(cssW, cssH, characterCount) {
   // 游戏内直径（CSS px）= defaultRadius(36) × 2 × cssW / 540
   // 联立：ballSize = 36 × 2 × cssW / (540 × 0.76) ≈ cssW / 5.7
   // 再乘 1.35 整体放大，让卡片内容更饱满
-  const ballSize   = Math.round(cssW / 5.7 * 1.35);
+  const ballSize   = Math.round(cssW / 5.7 * 1.0);
   const cardPadV   = Math.round(ballSize * 0.28);
   const cardPadH   = Math.round(ballSize * 0.26);
   const cardH      = ballSize + cardPadV * 2;
@@ -912,12 +912,12 @@ function getRecordingLayout(cssW, cssH, characterCount) {
   const cardW      = cssW - innerPad * 2;
   const innerX     = innerPad;
 
-  // 字体随 ballSize 同步放大
-  const eyebrowSize = Math.round(Math.min(cssW * 0.028, 22));
-  const titleSize   = Math.round(Math.min(cssW * 0.075, 62));
-  const nameSize    = Math.round(Math.min(cssW * 0.050, 40));
-  const smallSize   = Math.round(Math.min(cssW * 0.030, 22));
-  const pillSize    = Math.round(Math.min(cssW * 0.024, 17));
+  // 字体
+  const eyebrowSize = Math.round(Math.min(cssW * 0.038, 30));
+  const titleSize   = Math.round(Math.min(cssW * 0.100, 85));
+  const nameSize    = Math.round(Math.min(cssW * 0.068, 55));
+  const smallSize   = Math.round(Math.min(cssW * 0.041, 32));
+  const pillSize    = Math.round(Math.min(cssW * 0.033, 26));
 
   // 垂直居中
   const headerGap  = Math.round(cssH * 0.04);

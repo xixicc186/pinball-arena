@@ -258,6 +258,25 @@ body {
   pointer-events: none;
 }
 
+/* ── 出场动画 outro 转场 ── */
+.entry-stage-outro {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 700ms ease !important;
+}
+
+.entry-stage-outro .entry-stage-header,
+.entry-stage-outro .entry-card-info {
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.entry-stage-outro .entry-card {
+  border-color: transparent;
+  background: transparent;
+  transition: border-color 220ms ease, background 220ms ease;
+}
+
 .entry-stage-inner {
   width: min(860px, 100%);
   display: flex;

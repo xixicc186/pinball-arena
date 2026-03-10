@@ -42,6 +42,7 @@ const RECORDING_BITS_PER_SECOND = 24_000_000;
 const RECORDING_END_HOLD_MS = 5000;
 const ENTRY_CARD_STAGGER_MS = 200;
 const ENTRY_HOLD_MS = 1800;
+const ENTRY_OUTRO_MS = 700;
 
 let selectedId = CHARACTER_LIBRARY[0].id;
 let selectedRosterIds = new Set(CHARACTER_LIBRARY.map((character) => character.id));
@@ -70,6 +71,7 @@ let leaderboardScores = {};
 let currentMatchResult = null;
 const entryState = {
   active: false,
+  outroActive: false,
   timeoutIds: [],
   characters: [],
   animFrameId: null,
@@ -748,10 +750,101 @@ function showEntryStage() {
 }
 
 function hideEntryStage() {
+  if (entryState.outroActive) return;
+  entryStage.classList.remove("entry-stage-outro");
   entryStage.classList.add("hidden");
   entryStageCards.innerHTML = "";
   entryState.characters = [];
   stopEntryBallLoop();
+}
+
+function runEntryOutroTransition() {
+  entryState.outroActive = true;
+
+  return new Promise((resolve) => {
+    const dpr = window.devicePixelRatio || 1;
+    const animStart = entryState.animStart;
+    const arenaCanvas = document.getElementById("arena-canvas");
+    const arenaRect = arenaCanvas.getBoundingClientRect();
+    const targetCx = arenaRect.left + arenaRect.width / 2;
+    const targetCy = arenaRect.top + arenaRect.height / 2;
+
+    // 捕获每个卡片小球的屏幕位置并创建飞行浮层
+    const flyingBalls = Array.from(entryStageCards.children).map((card, index) => {
+      const ballCanvas = card.querySelector(".entry-card-ball");
+      const character = entryState.characters[index];
+      if (!ballCanvas || !character) return null;
+
+      const rect = ballCanvas.getBoundingClientRect();
+      const size = rect.width;
+
+      const flyCanvas = document.createElement("canvas");
+      flyCanvas.width = Math.round(size * dpr);
+      flyCanvas.height = Math.round(size * dpr);
+      flyCanvas.style.cssText = `
+        position: fixed;
+        left: ${rect.left}px;
+        top: ${rect.top}px;
+        width: ${size}px;
+        height: ${size}px;
+        pointer-events: none;
+        z-index: 1000;
+      `;
+      const elapsed = (performance.now() - animStart) / 1000;
+      game.renderBallPreview(flyCanvas.getContext("2d"), character, elapsed);
+      document.body.appendChild(flyCanvas);
+
+      return {
+        flyCanvas,
+        character,
+        startX: rect.left,
+        startY: rect.top,
+        size,
+      };
+    }).filter(Boolean);
+
+    // 触发 CSS 转场：文字/边框先淡出，整体背景跟着淡出
+    entryStage.classList.add("entry-stage-outro");
+
+    // 动画：小球飞向场地中心
+    const startTime = performance.now();
+    let rafId;
+
+    const animLoop = (now) => {
+      const t = Math.min((now - startTime) / ENTRY_OUTRO_MS, 1);
+      // ease-in-out cubic
+      const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      const ballElapsed = (now - animStart) / 1000;
+
+      flyingBalls.forEach(({ flyCanvas, character, startX, startY, size }) => {
+        const currentSize = size * (1 - ease * 0.55);
+        const cx = startX + (targetCx - startX - currentSize / 2) * ease;
+        const cy = startY + (targetCy - startY - currentSize / 2) * ease;
+        const opacity = Math.max(0, 1 - ease * 1.6);
+
+        flyCanvas.style.left = `${cx}px`;
+        flyCanvas.style.top = `${cy}px`;
+        flyCanvas.style.width = `${currentSize}px`;
+        flyCanvas.style.height = `${currentSize}px`;
+        flyCanvas.style.opacity = opacity;
+
+        // 持续渲染小球动画
+        const flyCtx = flyCanvas.getContext("2d");
+        flyCtx.clearRect(0, 0, flyCanvas.width, flyCanvas.height);
+        game.renderBallPreview(flyCtx, character, ballElapsed);
+      });
+
+      if (t < 1) {
+        rafId = requestAnimationFrame(animLoop);
+      } else {
+        flyingBalls.forEach(({ flyCanvas }) => flyCanvas.remove());
+        entryState.outroActive = false;
+        resolve();
+      }
+    };
+
+    rafId = requestAnimationFrame(animLoop);
+  });
 }
 
 function clearEntryTimers() {
@@ -1143,13 +1236,17 @@ async function startMatch({ record = false } = {}) {
   overlay.innerHTML = "";
 
   await runEntryAnimation(selectedIds);
-  hideEntryStage();
 
+  // 先启动游戏（在出场舞台下方渲染），再做转场动画
   const focusId = selectedIds.includes(selectedId) ? selectedId : selectedIds[0];
   game.start(focusId, selectedIds, {
     includeEdgeHazards: matchSettings.includeEdgeHazards,
     duelTime: matchSettings.duelTime,
   });
+
+  // 丝滑转场：文字/边框淡出 + 小球飞入场地
+  await runEntryOutroTransition();
+  hideEntryStage();
 }
 
 const game = new ArenaGame(canvas, {

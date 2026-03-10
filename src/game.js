@@ -632,6 +632,7 @@ export class ArenaGame {
   }
 
   executeBasicAttack(actor, trigger, event) {
+    if (actor.state.frozenTime > 0) return;
     actor.definition.basicAttack?.execute?.({
       actor,
       trigger,
@@ -646,6 +647,7 @@ export class ArenaGame {
     if (!actor.alive || !actor.definition.ultimate?.execute) {
       return;
     }
+    if (actor.state.frozenTime > 0) return;
     actor.highlightTime = 0.45;
     this.announce(`${actor.name} 释放了 ${actor.definition.ultimate.name}。`);
     actor.definition.ultimate.execute({

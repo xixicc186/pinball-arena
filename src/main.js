@@ -80,6 +80,7 @@ const drawState = {
   intervalIds: [],
   timeoutIds: [],
 };
+let currentDrawSlots = [];
 const battleFeedItems = [];
 
 function sanitizeDuelTime(value) {
@@ -881,10 +882,11 @@ function renderDrawOnCanvas() {
   ctx.stroke();
 
   slots.forEach((slotEl, i) => {
-    const settled = slotEl.classList.contains("settled");
-    const name = slotEl.querySelector(".draw-slot-label")?.textContent ?? "---";
-    const title = slotEl.querySelector(".draw-slot-title")?.textContent ?? "";
-    const indexLabel = slotEl.querySelector(".draw-slot-index")?.textContent ?? `Slot ${i + 1}`;
+    const slotData = currentDrawSlots[i]?.data;
+    const settled = slotData?.settled ?? slotEl.classList.contains("settled");
+    const name = slotData?.name ?? "---";
+    const title = slotData?.title ?? "";
+    const indexLabel = slotData?.indexLabel ?? `Slot ${i + 1}`;
     const character = settled ? CHARACTER_LIBRARY.find((c) => c.name === name) : null;
 
     const cx = cardMg + i * (cardW + cardGap);
@@ -903,8 +905,9 @@ function renderDrawOnCanvas() {
     ctx.fill();
 
     // Card border
-    ctx.strokeStyle = settled && character
-      ? character.color + "70"
+    const cardColor = slotData?.color ?? character?.color;
+    ctx.strokeStyle = settled && cardColor
+      ? cardColor + "70"
       : "rgba(255,255,255,0.10)";
     ctx.lineWidth = settled ? 1.5 : 1;
     ctx.stroke();
@@ -976,8 +979,8 @@ function renderDrawOnCanvas() {
 
       // ── Skills ──
       const skillsTop = cy + cardPad + 30 + nameSz + 10 + 28 + 28;
-      const basicName = slotEl.querySelector(".draw-slot-basic-name")?.textContent ?? "—";
-      const ultName   = slotEl.querySelector(".draw-slot-ult-name")?.textContent ?? "—";
+      const basicName = slotData?.basicName ?? "—";
+      const ultName   = slotData?.ultName ?? "—";
       const skillGap  = skillGapPx;
 
       [["普攻", basicName], ["大招", ultName]].forEach(([label, val], si) => {
@@ -1008,11 +1011,11 @@ function renderDrawOnCanvas() {
       ctx.stroke();
 
       // ── Stats grid ──
-      const hp      = slotEl.querySelector(".draw-slot-stat-hp")?.textContent ?? "—";
-      const speed   = slotEl.querySelector(".draw-slot-stat-speed")?.textContent ?? "—";
-      const essence = slotEl.querySelector(".draw-slot-stat-essence")?.textContent ?? "—";
-      const range   = slotEl.querySelector(".draw-slot-stat-range")?.textContent ?? "—";
-      const radius  = slotEl.querySelector(".draw-slot-stat-radius")?.textContent ?? "—";
+      const hp      = slotData?.hp ?? "—";
+      const speed   = slotData?.speed ?? "—";
+      const essence = slotData?.essence ?? "—";
+      const range   = slotData?.range ?? "—";
+      const radius  = slotData?.radius ?? "—";
 
       const statRows = [
         [["HP", hp], ["速度", speed], ["精元", essence]],
@@ -1285,6 +1288,7 @@ function createDrawSlot(slotIndex) {
 
   return {
     element,
+    indexLabel: `Slot ${slotIndex + 1}`,
     nameElement: element.querySelector(".draw-slot-label"),
     titleElement: element.querySelector(".draw-slot-title"),
     basicNameElement: element.querySelector(".draw-slot-basic-name"),
@@ -1294,6 +1298,7 @@ function createDrawSlot(slotIndex) {
     statEssenceElement: element.querySelector(".draw-slot-stat-essence"),
     statRangeElement: element.querySelector(".draw-slot-stat-range"),
     statRadiusElement: element.querySelector(".draw-slot-stat-radius"),
+    data: { settled: false, name: "---", title: "", indexLabel: `Slot ${slotIndex + 1}`, color: null, basicName: "—", ultName: "—", hp: "—", speed: "—", essence: "—", range: "—", radius: "—" },
   };
 }
 
@@ -1304,14 +1309,29 @@ function updateDrawSlot(slot, character, settled = false) {
   slot.nameElement.textContent = character.name;
   slot.titleElement.textContent = character.title;
 
+  // Update JS data cache so renderDrawOnCanvas doesn't need to query DOM
+  slot.data.settled = settled;
+  slot.data.name = character.name;
+  slot.data.title = character.title;
+  slot.data.color = character.color;
+
   if (settled) {
-    slot.basicNameElement.textContent = character.basicAttack?.name ?? "—";
-    slot.ultNameElement.textContent = character.ultimate?.name ?? "—";
+    const basicName = character.basicAttack?.name ?? "—";
+    const ultName = character.ultimate?.name ?? "—";
+    slot.basicNameElement.textContent = basicName;
+    slot.ultNameElement.textContent = ultName;
     slot.statHpElement.textContent = character.stats.maxHp;
     slot.statSpeedElement.textContent = character.stats.speed;
     slot.statEssenceElement.textContent = character.stats.maxEssence;
     slot.statRangeElement.textContent = character.stats.attackRange;
     slot.statRadiusElement.textContent = character.stats.radius;
+    slot.data.basicName = basicName;
+    slot.data.ultName = ultName;
+    slot.data.hp = String(character.stats.maxHp);
+    slot.data.speed = String(character.stats.speed);
+    slot.data.essence = String(character.stats.maxEssence);
+    slot.data.range = String(character.stats.attackRange);
+    slot.data.radius = String(character.stats.radius);
   }
 }
 
@@ -1336,6 +1356,7 @@ function runDrawSequence(poolIds, drawCount, forcedIds = []) {
     slotViews.push(slot);
     drawStageSlotsElement.appendChild(slot.element);
   });
+  currentDrawSlots = slotViews;
 
   updateRosterStatus();
   updateRecordButton();

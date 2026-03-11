@@ -290,6 +290,8 @@ export class ArenaGame {
       decoys: [],
       lasers: [],
       tornadoes: [],
+      ghosts: [],
+      ghostVeil: null,
       scheduledActions: [],
       shake: { amplitude: 0, duration: 0, timeLeft: 0 },
       nextEssenceIn: 1.5,
@@ -495,6 +497,7 @@ export class ArenaGame {
     this.updateActors(dt);
     this.updateHolySwords(dt);
     this.updateTornadoes(dt);
+    this.updateGhosts(dt);
     this.updateLasers(dt);
     this.resolveActorCollisions();
     this.updateTrails(dt);
@@ -1617,7 +1620,7 @@ export class ArenaGame {
     if (!target.alive) {
       return false;
     }
-    if (target.state?.invulnerableTime > 0) {
+    if (target.state?.invulnerableTime > 0 && !options.ignoreInvulnerable) {
       return false;
     }
 
@@ -1688,6 +1691,17 @@ export class ArenaGame {
       game: this,
       api: this.createSkillApi(attacker),
     });
+
+    for (const actor of this.state.actors) {
+      if (actor.alive && actor.definition?.onAnyDeath) {
+        actor.definition.onAnyDeath({
+          actor,
+          target,
+          game: this,
+          api: this.createSkillApi(actor),
+        });
+      }
+    }
   }
 
   spawnDeathBurst(target) {
@@ -1816,11 +1830,15 @@ export class ArenaGame {
     this.renderPulses(ctx, state);
     this.renderBeams(ctx, state);
     this.renderLasers(ctx, state);
+    if (state.ghostVeil) {
+      this.renderGhostVeil(ctx, state);
+    }
     if (this.entryTransition) {
       this.renderEntryMarkers(ctx, state);
     } else {
       this.renderActors(ctx, state);
     }
+    this.renderGhosts(ctx, state);
     this.renderParticles(ctx, state);
     this.renderDamageTexts(ctx, state);
 
@@ -2420,6 +2438,9 @@ export class ArenaGame {
         break;
       case "eagle-eye":
         this.renderEagleBall(ctx, actor, elapsed);
+        break;
+      case "soul-caller":
+        this.renderSoulCallerBall(ctx, actor, elapsed);
         break;
       default:
         ctx.fillStyle = actor.color;
@@ -4053,5 +4074,172 @@ export class ArenaGame {
     ctx.beginPath();
     ctx.arc(-r * 0.3, -r * 0.32, r * 0.24, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  // ─── 招魂者 幽灵系统 ────────────────────────────────────────────────────────
+
+  updateGhosts(dt) {
+    const GHOST_SPEED = 55;
+    const ORBIT_SPEED = 1.8;
+
+    if (this.state.ghostVeil) {
+      this.state.ghostVeil.time -= dt;
+      if (this.state.ghostVeil.time <= 0) this.state.ghostVeil = null;
+    }
+
+    for (const actor of this.state.actors) {
+      if (!actor.alive || actor.characterId !== "soul-caller") continue;
+      const ghosts = actor.state.ghosts;
+      if (!ghosts) continue;
+
+      actor.state.ghosts = ghosts.filter((ghost) => {
+        ghost.age += dt;
+
+        if (ghost.status === "seeking") {
+          let nearest = null;
+          let nearestDist = Infinity;
+          for (const enemy of this.getEnemies(actor)) {
+            if (!enemy.alive) continue;
+            const d = distance(ghost.position, enemy.position);
+            if (d < nearestDist) {
+              nearestDist = d;
+              nearest = enemy;
+            }
+          }
+
+          if (nearest) {
+            const delta = subtract(nearest.position, ghost.position);
+            const dist = length(delta);
+            if (dist > 0.5) {
+              ghost.position.x += (delta.x / dist) * GHOST_SPEED * dt;
+              ghost.position.y += (delta.y / dist) * GHOST_SPEED * dt;
+            }
+            if (nearestDist < nearest.radius + 15) {
+              ghost.status = "possessing";
+              ghost.targetId = nearest.id;
+              ghost.orbitAngle = Math.atan2(
+                ghost.position.y - nearest.position.y,
+                ghost.position.x - nearest.position.x,
+              );
+            }
+          }
+        } else if (ghost.status === "possessing") {
+          const target = this.findActorById(ghost.targetId);
+          if (!target || !target.alive) {
+            return false;
+          }
+          ghost.orbitAngle += ORBIT_SPEED * dt;
+          const orbitRadius = target.radius + 22;
+          ghost.position = {
+            x: target.position.x + Math.cos(ghost.orbitAngle) * orbitRadius,
+            y: target.position.y + Math.sin(ghost.orbitAngle) * orbitRadius,
+          };
+        }
+
+        return true;
+      });
+    }
+  }
+
+  renderGhosts(ctx, state) {
+    for (const actor of state.actors) {
+      if (!actor.alive || actor.characterId !== "soul-caller") continue;
+      const ghosts = actor.state.ghosts;
+      if (!ghosts || ghosts.length === 0) continue;
+
+      for (const ghost of ghosts) {
+        ctx.save();
+        const pulse = 0.7 + 0.3 * Math.sin(state.elapsed * 4 + ghost.orbitAngle * 2);
+        const alpha = ghost.status === "possessing" ? 0.85 : 0.62;
+
+        ctx.shadowBlur = 14;
+        ctx.shadowColor = "#4dff8e";
+
+        const grad = ctx.createRadialGradient(
+          ghost.position.x, ghost.position.y, 0,
+          ghost.position.x, ghost.position.y, 9,
+        );
+        grad.addColorStop(0, `rgba(200, 255, 230, ${alpha * pulse})`);
+        grad.addColorStop(0.55, `rgba(77, 220, 130, ${alpha * 0.75})`);
+        grad.addColorStop(1, `rgba(40, 140, 80, 0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(ghost.position.x, ghost.position.y, 9, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.shadowBlur = 5;
+        ctx.fillStyle = `rgba(220, 255, 240, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(ghost.position.x, ghost.position.y, 2.8, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+    }
+  }
+
+  renderGhostVeil(ctx, state) {
+    const t = Math.max(0, Math.min(1, state.ghostVeil.time / 2.5));
+    const flicker = 0.1 + 0.06 * Math.sin(state.elapsed * 20);
+    ctx.save();
+    ctx.fillStyle = `rgba(30, 160, 80, ${t * flicker})`;
+    ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    ctx.restore();
+  }
+
+  renderSoulCallerBall(ctx, actor, elapsed) {
+    const r = actor.radius;
+
+    const grad = ctx.createRadialGradient(-r * 0.2, -r * 0.2, 0, 0, 0, r);
+    grad.addColorStop(0, "#5a2a80");
+    grad.addColorStop(0.6, "#2d1050");
+    grad.addColorStop(1, "#170820");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 幽灵数量越多，边缘光环越亮
+    const ghostCount = (actor.state.ghosts ?? []).length;
+    const haloAlpha = 0.12 + 0.08 * Math.sin(elapsed * 2.2) + Math.min(ghostCount * 0.015, 0.2);
+    ctx.strokeStyle = `rgba(77, 200, 120, ${haloAlpha})`;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, r + 2, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 骷髅眼 — 双绿色发光眼眶
+    const eyePulse = 0.78 + 0.22 * Math.sin(elapsed * 1.9);
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "#50ff90";
+    ctx.fillStyle = `rgba(80, 255, 140, ${eyePulse})`;
+    ctx.beginPath();
+    ctx.arc(-r * 0.26, -r * 0.1, r * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(r * 0.26, -r * 0.1, r * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 骷髅嘴 — 弧形笑容
+    ctx.shadowBlur = 5;
+    ctx.strokeStyle = `rgba(80, 255, 140, 0.65)`;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(0, r * 0.22, r * 0.27, 0.18 * Math.PI, 0.82 * Math.PI);
+    ctx.stroke();
+
+    // 环绕小幽灵（3个小点）
+    for (let i = 0; i < 3; i++) {
+      const angle = elapsed * 1.3 + (i * Math.PI * 2) / 3;
+      const wx = Math.cos(angle) * r * 0.8;
+      const wy = Math.sin(angle) * r * 0.8;
+      const wAlpha = 0.38 + 0.2 * Math.sin(elapsed * 3.5 + i * 1.8);
+      ctx.shadowBlur = 7;
+      ctx.shadowColor = "#50ff90";
+      ctx.fillStyle = `rgba(100, 255, 170, ${wAlpha})`;
+      ctx.beginPath();
+      ctx.arc(wx, wy, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }

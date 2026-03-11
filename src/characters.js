@@ -1537,6 +1537,124 @@ export const CHARACTER_LIBRARY = [
       },
     },
   }),
+
+  // ─── 招魂者 ──────────────────────────────────────────────────────────────────
+  defineCharacter({
+    id: "soul-caller",
+    name: "招魂者",
+    title: "亡灵巫师",
+    color: "#7b52ab",
+    description: "场上任意角色死亡时，在其尸骸处召唤3只追踪幽灵。幽灵附身敌人后环绕轨道飘荡；大招引爆所有附身幽灵，每只造成10点穿透伤害，无视无敌护盾。",
+    stats: {
+      maxHp: 200,
+      speed: 120,
+      maxEssence: 4,
+      attackRange: 999,
+      radius: 18,
+    },
+    tuning: {
+      basic: {},
+      ult: {
+        ghostDamage: 10,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "平A · 怨灵苏醒",
+        fields: [
+          editableField("basicAttack.triggers.0.interval", "召唤间隔", { min: 0.5, step: 0.5, unit: "s" }),
+        ],
+      },
+      {
+        title: "大招 · 百鬼夜行",
+        fields: [
+          editableField("tuning.ult.ghostDamage", "每只幽灵伤害", { min: 1, step: 1 }),
+        ],
+      },
+    ],
+    onSpawn({ actor }) {
+      actor.state.ghosts = [];
+    },
+    onAnyDeath({ actor, target }) {
+      // 在死亡角色的位置生成3只追踪幽灵
+      for (let i = 0; i < 3; i++) {
+        const angle = (i / 3) * Math.PI * 2;
+        actor.state.ghosts.push({
+          id: Math.random().toString(16).slice(2),
+          position: {
+            x: target.position.x + Math.cos(angle) * 10,
+            y: target.position.y + Math.sin(angle) * 10,
+          },
+          status: "seeking",
+          targetId: null,
+          orbitAngle: angle,
+          age: 0,
+        });
+      }
+    },
+    basicAttack: {
+      name: "怨灵苏醒",
+      triggers: [{ type: "interval", interval: 3 }],
+      execute({ actor }) {
+        const angle = Math.random() * Math.PI * 2;
+        actor.state.ghosts.push({
+          id: Math.random().toString(16).slice(2),
+          position: {
+            x: actor.position.x + Math.cos(angle) * actor.radius * 0.5,
+            y: actor.position.y + Math.sin(angle) * actor.radius * 0.5,
+          },
+          status: "seeking",
+          targetId: null,
+          orbitAngle: angle,
+          age: 0,
+        });
+      },
+    },
+    ultimate: {
+      name: "百鬼夜行",
+      execute({ actor, api }) {
+        api.lockMovement(2.0);
+        api.grantInvulnerable(2.1);
+        api.schedule(2.0, ({ actor, api, game }) => {
+          const t = actor.definition.tuning.ult;
+          game.state.ghostVeil = { time: 2.5 };
+          game.shake(20, 0.4);
+          // 统计每个目标上的附身幽灵数量
+          const detonations = new Map();
+          actor.state.ghosts = actor.state.ghosts.filter((ghost) => {
+            if (ghost.status === "possessing" && ghost.targetId) {
+              detonations.set(ghost.targetId, (detonations.get(ghost.targetId) ?? 0) + 1);
+              return false;
+            }
+            return true;
+          });
+          // 引爆幽灵，伤害穿透无敌
+          for (const [targetId, count] of detonations) {
+            const target = game.findActorById(targetId);
+            if (target && target.alive) {
+              game.applyDamage(target, count * t.ghostDamage, {
+                type: "skill",
+                color: "#4dff8e",
+                attacker: actor,
+                ignoreInvulnerable: true,
+              });
+            }
+          }
+          if (detonations.size > 0) {
+            api.emitText("百鬼夜行！", actor.position, "#4dff8e");
+          }
+        });
+      },
+    },
+  }),
 ];
 
 const CHARACTER_DEFAULTS = Object.fromEntries(

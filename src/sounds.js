@@ -318,6 +318,25 @@ const basicAttackSounds = {
     n.start(t); o.start(t); n.stop(t + 0.6); o.stop(t + 0.56);
   },
 
+  // 招魂者：幽灵召唤 — 空洞颤鸣
+  "soul-caller"() {
+    if (throttle("ba:soul-caller", 2600)) return;
+    const c = getCtx(); const t = c.currentTime;
+    const master = getMaster(c);
+    const o = osc(c, "sine", 310);
+    o.frequency.exponentialRampToValueAtTime(175, t + 0.42);
+    const lfo = c.createOscillator();
+    lfo.type = "sine"; lfo.frequency.value = 5.5;
+    const lg = gainNode(c, 35);
+    lfo.connect(lg); lg.connect(o.frequency);
+    const g = gainNode(c, 0.0);
+    g.gain.setValueAtTime(0.0, t);
+    g.gain.linearRampToValueAtTime(0.28, t + 0.07);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.46);
+    o.connect(g); g.connect(master);
+    lfo.start(t); o.start(t); lfo.stop(t + 0.5); o.stop(t + 0.47);
+  },
+
   // 绝对零度：寒冰散射 — 冰晶碎裂
   "frost-core"() {
     if (throttle("ba:frost-core", 280)) return;
@@ -597,6 +616,32 @@ const ultimateSounds = {
     g2.gain.setValueAtTime(0.22, t);
     g2.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
     o2.connect(g2); g2.connect(master); o2.start(t); o2.stop(t + 0.66);
+  },
+
+  // 招魂者：百鬼夜行 — 鬼魂合唱
+  "soul-caller"() {
+    const c = getCtx(); const t = c.currentTime;
+    const master = getMaster(c);
+    // 幽灵合唱（多正弦波渐入）
+    [220, 277, 330, 415].forEach((freq, i) => {
+      const o = osc(c, "sine", freq);
+      const g = gainNode(c, 0.0);
+      g.gain.setValueAtTime(0.0, t + i * 0.06);
+      g.gain.linearRampToValueAtTime(0.18, t + i * 0.06 + 0.18);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.95 + i * 0.06);
+      o.connect(g); g.connect(master);
+      o.start(t + i * 0.06); o.stop(t + 1.05 + i * 0.06);
+    });
+    // 低频轰鸣底噪
+    const n = makeNoise(c, 0.4);
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 220;
+    const gn = gainNode(c, 0.0);
+    gn.gain.setValueAtTime(0.0, t);
+    gn.gain.linearRampToValueAtTime(0.32, t + 0.18);
+    gn.gain.exponentialRampToValueAtTime(0.001, t + 0.88);
+    n.connect(lp); lp.connect(gn); gn.connect(master);
+    n.start(t); n.stop(t + 0.9);
   },
 
   "frost-core"() {

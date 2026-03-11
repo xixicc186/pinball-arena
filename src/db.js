@@ -9,7 +9,6 @@ const HEADERS = {
 };
 
 const TABLE = `${SUPABASE_URL}/rest/v1/character_tuning`;
-const LEADERBOARD_TABLE = `${SUPABASE_URL}/rest/v1/character_leaderboard`;
 
 export async function loadAllOverrides() {
   try {
@@ -51,40 +50,3 @@ export async function clearOverrides(characterId) {
   }
 }
 
-// 获取排行榜数据，返回 { characterId: { name, score } }
-export async function getLeaderboard() {
-  try {
-    const res = await fetch(
-      `${LEADERBOARD_TABLE}?select=character_id,character_name,score&order=score.desc`,
-      { headers: HEADERS },
-    );
-    if (!res.ok) return {};
-    const rows = await res.json();
-    return Object.fromEntries(
-      rows.map((row) => [row.character_id, { name: row.character_name, score: row.score }]),
-    );
-  } catch {
-    return {};
-  }
-}
-
-// 批量写入角色积分（upsert）
-// updates: [{ characterId, name, newScore }]
-export async function updateCharacterScores(updates) {
-  if (!updates.length) return;
-  const body = updates.map(({ characterId, name, newScore }) => ({
-    character_id: characterId,
-    character_name: name,
-    score: newScore,
-    updated_at: new Date().toISOString(),
-  }));
-  try {
-    await fetch(LEADERBOARD_TABLE, {
-      method: "POST",
-      headers: { ...HEADERS, Prefer: "resolution=merge-duplicates" },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    // 网络错误时静默失败
-  }
-}

@@ -6,7 +6,7 @@
   updateCharacterValue,
 } from "./characters.js";
 import { ArenaGame } from "./game.js";
-import { clearOverrides, getLeaderboard, loadAllOverrides, saveOverrides, updateCharacterScores } from "./db.js";
+import { clearOverrides, loadAllOverrides, saveOverrides } from "./db.js";
 
 const rosterElement = document.getElementById("roster");
 const rosterStatusElement = document.getElementById("roster-status");
@@ -20,11 +20,6 @@ const clearRosterButton = document.getElementById("clear-roster-button");
 const openRosterButton = document.getElementById("open-roster-button");
 const closeRosterButton = document.getElementById("close-roster-button");
 const rosterModal = document.getElementById("roster-modal");
-const openLeaderboardButton = document.getElementById("open-leaderboard-button");
-const closeLeaderboardButton = document.getElementById("close-leaderboard-button");
-const saveLeaderboardButton = document.getElementById("save-leaderboard-button");
-const leaderboardModal = document.getElementById("leaderboard-modal");
-const leaderboardRowsEl = document.getElementById("leaderboard-rows");
 const edgeSpikesToggle = document.getElementById("edge-spikes-toggle");
 const duelTimeInput = document.getElementById("duel-time-input");
 const overlay = document.getElementById("overlay");
@@ -62,13 +57,8 @@ const recordingState = {
   stopTimeoutId: null,
   stopAnimationFrameId: null,
   drawLoopId: null,
-  pendingMatchResult: null,
 };
 
-// 排行榜：{ characterId: { name, score } }
-let leaderboardScores = {};
-// 当前对局结算结果
-let currentMatchResult = null;
 const entryState = {
   active: false,
   outroActive: false,
@@ -546,97 +536,6 @@ function drawRecordingOverlay(ctx, width, height, margin, radius) {
       ctx.fillText(line, x + padding, cursorY);
     });
   }
-  ctx.restore();
-}
-
-// 根据参赛人数计算每个名次的积分变化
-// 2人: [+1,-1]  3人: [+1,0,-1]  4人: [+2,+1,0,-1]  5人: [+2,+1,0,-1,-2] ...
-function getScoreChanges(n) {
-  if (n === 2) return [1, -1];
-  const max = Math.floor(n / 2);
-  return Array.from({ length: n }, (_, i) => max - i);
-}
-
-// 在 canvas 上绘制本场积分结算面板
-function drawMatchResultOnCanvas(ctx, W, H, matchResult) {
-  if (!matchResult || !matchResult.entries.length) return;
-
-  const entries = matchResult.entries;
-  const n = entries.length;
-
-  const mg = 32;
-  const rd = 18;
-  const headerH = Math.round(H * 0.055);
-  const rowH = Math.round(H * 0.062);
-  const pad = Math.round(W * 0.032);
-  const panelW = Math.min(Math.round(W * 0.85), W - mg * 2);
-  const panelH = headerH + rowH * n + pad;
-  const panelX = Math.round((W - panelW) / 2);
-  const panelY = Math.round((H - panelH) / 2);
-
-  ctx.save();
-
-  // 面板背景
-  fillRoundedPanel(ctx, panelX, panelY, panelW, panelH, rd);
-
-  // 标题
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "#f3d2a2";
-  ctx.font = `700 ${Math.round(H * 0.022)}px "Microsoft YaHei UI", sans-serif`;
-  ctx.fillText("本场积分结算", W / 2, panelY + headerH * 0.52);
-
-  // 分隔线
-  ctx.strokeStyle = "rgba(255,255,255,0.12)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(panelX + pad, panelY + headerH);
-  ctx.lineTo(panelX + panelW - pad, panelY + headerH);
-  ctx.stroke();
-
-  const rankColors = ["#ffd700", "#c0c0c0", "#cd7f32"];
-
-  entries.forEach((entry, i) => {
-    const rowY = panelY + headerH + rowH * i;
-    const midY = rowY + rowH * 0.5;
-    const rankColor = i < 3 ? rankColors[i] : "rgba(200,200,200,0.55)";
-
-    // 名次圈
-    const rankX = panelX + pad + Math.round(W * 0.042);
-    ctx.beginPath();
-    ctx.arc(rankX, midY, Math.round(H * 0.022), 0, Math.PI * 2);
-    ctx.fillStyle = i < 3 ? rankColor + "33" : "rgba(255,255,255,0.08)";
-    ctx.fill();
-    ctx.strokeStyle = rankColor;
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    ctx.fillStyle = rankColor;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = `700 ${Math.round(H * 0.02)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(`${i + 1}`, rankX, midY);
-
-    // 角色名称（带颜色）
-    ctx.fillStyle = entry.color;
-    ctx.textAlign = "left";
-    ctx.font = `600 ${Math.round(H * 0.022)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(entry.name, panelX + pad + Math.round(W * 0.1), midY);
-
-    // 积分变化
-    const deltaText = entry.delta > 0 ? `+${entry.delta}` : `${entry.delta}`;
-    ctx.fillStyle = entry.delta > 0 ? "#4ade80" : entry.delta < 0 ? "#f87171" : "rgba(160,160,160,0.8)";
-    ctx.textAlign = "right";
-    ctx.font = `700 ${Math.round(H * 0.026)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(deltaText, panelX + panelW - pad - Math.round(W * 0.18), midY);
-
-    // 总分
-    ctx.fillStyle = "rgba(255,247,235,0.75)";
-    ctx.textAlign = "right";
-    ctx.font = `500 ${Math.round(H * 0.017)}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(`总分 ${entry.newScore}`, panelX + panelW - pad, midY);
-  });
-
   ctx.restore();
 }
 
@@ -1258,7 +1157,6 @@ function resetRecordingState() {
   recordingState.renderCanvas = null;
   recordingState.renderCtx = null;
   recordingState.latestSnapshot = null;
-  recordingState.pendingMatchResult = null;
   updateRecordButton();
   updateRosterStatus();
 }
@@ -1329,24 +1227,9 @@ function startCanvasRecording() {
     recorder.addEventListener("stop", async () => {
       const chunks = [...recordingState.chunks];
       const finalMimeType = recordingState.mimeType;
-      const pendingResult = recordingState.pendingMatchResult;
 
       recordingState.stream?.getTracks().forEach((track) => track.stop());
       resetRecordingState();
-
-      if (pendingResult) {
-        if (window.confirm("是否将本场积分写入总积分排行榜？")) {
-          await updateCharacterScores(
-            pendingResult.entries.map((e) => ({
-              characterId: e.characterId,
-              name: e.name,
-              newScore: e.newScore,
-            })),
-          );
-          // 刷新本地排行榜缓存
-          leaderboardScores = await getLeaderboard();
-        }
-      }
 
       if (chunks.length) {
         const blob = new Blob(chunks, { type: finalMimeType });
@@ -1447,9 +1330,6 @@ const game = new ArenaGame(canvas, {
     renderScoreboard(snapshot);
     recordingState.latestSnapshot = snapshot;
     renderRecordingFrame(snapshot);
-    if (snapshot.matchOver && currentMatchResult) {
-      drawMatchResultOnCanvas(canvas.getContext("2d"), canvas.width, canvas.height, currentMatchResult);
-    }
   },
   onMatchStart(snapshot) {
     hideEntryStage();
@@ -1457,7 +1337,6 @@ const game = new ArenaGame(canvas, {
     overlay.innerHTML = "";
     battleFeedItems.length = 0;
     feed.innerHTML = "";
-    currentMatchResult = null;
     updateHud(snapshot);
     renderScoreboard(snapshot);
     recordingState.latestSnapshot = snapshot;
@@ -1476,29 +1355,6 @@ const game = new ArenaGame(canvas, {
         <p class="overlay-eyebrow">Draw</p>
         <h2>本局同归于尽</h2>
       `;
-
-    // 计算本场积分结算
-    const finishOrder = snapshot.finishOrder ?? [];
-    if (finishOrder.length > 0) {
-      const deltas = getScoreChanges(finishOrder.length);
-      currentMatchResult = {
-        entries: finishOrder.map((actor, i) => ({
-          characterId: actor.characterId,
-          name: actor.name,
-          color: actor.color,
-          position: i + 1,
-          delta: deltas[i],
-          currentScore: leaderboardScores[actor.characterId]?.score ?? 0,
-          newScore: (leaderboardScores[actor.characterId]?.score ?? 0) + deltas[i],
-        })),
-      };
-    } else {
-      currentMatchResult = null;
-    }
-
-    if (recordingState.active && currentMatchResult) {
-      recordingState.pendingMatchResult = currentMatchResult;
-    }
 
     renderRecordingFrame(snapshot);
     scheduleCanvasRecordingStop();
@@ -1569,8 +1425,7 @@ duelTimeInput.addEventListener("change", () => {
 });
 
 async function initDb() {
-  const [allOverrides, scores] = await Promise.all([loadAllOverrides(), getLeaderboard()]);
-  leaderboardScores = scores;
+  const allOverrides = await loadAllOverrides();
   let hasChanges = false;
   for (const [characterId, overrides] of Object.entries(allOverrides)) {
     for (const [path, value] of Object.entries(overrides)) {
@@ -1583,91 +1438,6 @@ async function initDb() {
     renderEditor();
   }
 }
-
-// ── 积分排行榜 Modal ──────────────────────────────────────────────────────────
-
-function openLeaderboardModal() {
-  renderLeaderboardModal();
-  leaderboardModal.classList.remove("hidden");
-  leaderboardModal.setAttribute("aria-hidden", "false");
-}
-
-function closeLeaderboardModal() {
-  leaderboardModal.classList.add("hidden");
-  leaderboardModal.setAttribute("aria-hidden", "true");
-}
-
-function renderLeaderboardModal() {
-  const entries = CHARACTER_LIBRARY.map((char) => ({
-    characterId: char.id,
-    name: char.name,
-    color: char.color,
-    score: leaderboardScores[char.id]?.score ?? 0,
-  })).sort((a, b) => b.score - a.score);
-
-  if (entries.length === 0) {
-    leaderboardRowsEl.innerHTML = `<tr><td colspan="4" class="leaderboard-empty">暂无积分数据</td></tr>`;
-    return;
-  }
-
-  leaderboardRowsEl.innerHTML = entries.map((entry, i) => {
-    const rank = i + 1;
-    const badgeClass = rank <= 3 ? `rank-${rank}` : "rank-other";
-    return `
-      <tr data-character-id="${entry.characterId}">
-        <td class="lb-rank"><span class="lb-rank-badge ${badgeClass}">${rank}</span></td>
-        <td class="lb-name">
-          <div class="lb-name-cell">
-            <span class="lb-color-dot" style="background:${entry.color}"></span>
-            <span class="lb-char-name">${entry.name}</span>
-          </div>
-        </td>
-        <td class="lb-score">
-          <input type="number" value="${entry.score}" min="0" step="1" data-original="${entry.score}" />
-        </td>
-        <td class="lb-actions">
-          <button type="button" data-reset-id="${entry.characterId}">清零</button>
-        </td>
-      </tr>`;
-  }).join("");
-
-  // 清零按钮
-  leaderboardRowsEl.querySelectorAll("[data-reset-id]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const row = btn.closest("tr");
-      const input = row.querySelector("input[type=number]");
-      if (input) input.value = "0";
-    });
-  });
-}
-
-async function saveLeaderboard() {
-  saveLeaderboardButton.disabled = true;
-  saveLeaderboardButton.textContent = "保存中…";
-
-  const rows = leaderboardRowsEl.querySelectorAll("tr[data-character-id]");
-  const updates = [];
-  rows.forEach((row) => {
-    const characterId = row.dataset.characterId;
-    const input = row.querySelector("input[type=number]");
-    if (!input) return;
-    const newScore = Math.max(0, parseInt(input.value, 10) || 0);
-    const char = CHARACTER_LIBRARY.find((c) => c.id === characterId);
-    updates.push({ characterId, name: char?.name ?? characterId, newScore });
-  });
-
-  await updateCharacterScores(updates);
-  leaderboardScores = await getLeaderboard();
-
-  saveLeaderboardButton.disabled = false;
-  saveLeaderboardButton.textContent = "保存修改";
-  renderLeaderboardModal();
-}
-
-openLeaderboardButton?.addEventListener("click", openLeaderboardModal);
-closeLeaderboardButton?.addEventListener("click", closeLeaderboardModal);
-saveLeaderboardButton?.addEventListener("click", saveLeaderboard);
-leaderboardModal?.querySelector("[data-close-leaderboard]")?.addEventListener("click", closeLeaderboardModal);
 
 // ─────────────────────────────────────────────────────────────────────────────
 

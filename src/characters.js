@@ -980,7 +980,7 @@ export const CHARACTER_LIBRARY = [
   }),
   defineCharacter({
     id: "prism-refract",
-    name: "光棱",
+    name: "激光",
     title: "折射者",
     color: "#e8f0ff",
     description: "每3秒蓄力后发射一道随机方向的红色激光，可反射3次，命中造成6点伤害并使敌人僵直0.2秒。大招停止移动，同时射出3道持续3秒的粗壮激光，每道各命中一次敌人造成10点伤害。",
@@ -1087,7 +1087,7 @@ export const CHARACTER_LIBRARY = [
   }),
   defineCharacter({
     id: "holy-shield",
-    name: "圣盾",
+    name: "盾狗",
     title: "防守反击",
     color: "#f5d070",
     description: "碰撞三次充能金色护盾，护盾期间免疫所有伤害。大招召唤等同自身半径长度的环绕圣剑，再次释放则延长圣剑。",

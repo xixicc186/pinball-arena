@@ -3915,10 +3915,8 @@ export class ArenaGame {
             y:  Math.cos(info.orbitAngle) * orbitR * 4.2 + tornado.velocity.y,
           };
 
-          // 缴械效果
-          if (tornado.disarm) {
-            actor.state.disarmedTime = 0.15;
-          }
+          // 缴械效果（所有龙卷风均缴械）
+          actor.state.disarmedTime = 0.15;
 
           // 定时伤害
           if (doDamage && owner) {

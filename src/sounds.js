@@ -577,6 +577,32 @@ function playBombExplosion() {
   o.start(t); o.stop(t + 0.26);
 }
 
+// ─── 圣剑命中音效 ──────────────────────────────────────────────────────────────
+
+function playSwordHit() {
+  if (throttle("swordHit", 120)) return;
+  const c = getCtx(); const t = c.currentTime;
+  const master = getMaster(c);
+  // 金属斩击（高频锯齿 + 低通，模拟剑刃切入）
+  const o = osc(c, "sawtooth", 520);
+  o.frequency.exponentialRampToValueAtTime(180, t + 0.08);
+  const f = c.createBiquadFilter();
+  f.type = "lowpass"; f.frequency.value = 2200;
+  const g = gainNode(c, 0.72);
+  g.gain.setValueAtTime(0.72, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+  o.connect(f); f.connect(g); g.connect(master);
+  o.start(t); o.stop(t + 0.11);
+  // 神圣余韵（正弦泛音，金色光感）
+  const o2 = osc(c, "sine", 1100);
+  o2.frequency.exponentialRampToValueAtTime(680, t + 0.18);
+  const g2 = gainNode(c, 0.45);
+  g2.gain.setValueAtTime(0.45, t + 0.02);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+  o2.connect(g2); g2.connect(master);
+  o2.start(t + 0.02); o2.stop(t + 0.23);
+}
+
 // ─── 炮台部署音效 ──────────────────────────────────────────────────────────────
 
 function playTurretPlace() {
@@ -647,6 +673,8 @@ export function playSound({ type, characterId, impactSpeed, strikeType }) {
       basicAttackSounds[characterId]?.();
     } else if (type === "ultimate") {
       ultimateSounds[characterId]?.();
+    } else if (type === "swordHit") {
+      playSwordHit();
     } else if (type === "turretPlace") {
       playTurretPlace();
     } else if (type === "freeze") {

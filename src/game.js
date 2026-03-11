@@ -3571,6 +3571,7 @@ export class ArenaGame {
           this.applyDamage(enemy, swordDamage, { attacker: actor, color: "#f5d070" });
           actor.state.swordDamageCooldowns.set(enemy.id, 0.45);
           this.shake(5, 0.08);
+          this.callbacks.onSound?.({ type: "swordHit" });
         }
       }
     }

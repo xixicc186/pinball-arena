@@ -4392,85 +4392,87 @@ export class ArenaGame {
       const segments = wheel.segments;
       const N = segments.length;
       const segAngle = (Math.PI * 2) / N;
-      const wheelR = actor.radius * (wheel.isUlt ? 3.8 : 2.8);
 
-      // 颜色方案：红=坏（伤害自己/治疗敌人），绿=好（治疗自己/伤害敌人）
+      // 环形：内圈紧贴角色，外圈略大
+      const innerR = actor.radius + 6;
+      const outerR = actor.radius + (wheel.isUlt ? 38 : 28);
+      const midR = (innerR + outerR) / 2;
+
       const segColors = { 1: "#b82020", 2: "#1a7a38", 3: "#cc4400", 4: "#1a8844", 5: "#880a0a", 6: "#0a6688" };
 
       ctx.save();
       ctx.translate(actor.position.x, actor.position.y);
 
-      // 轮盘扇形
+      // 环形分格
       for (let i = 0; i < N; i++) {
         const a0 = currentAngle + i * segAngle;
         const a1 = a0 + segAngle;
         const isWinner = wheel.resolved && segments[i] === wheel.result;
         const pulse = isWinner ? (0.5 + 0.5 * Math.sin(state.elapsed * 9)) : 0;
 
+        // 用环形扇面（外弧 + 内弧反向）
         ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.arc(0, 0, wheelR, a0, a1);
+        ctx.arc(0, 0, outerR, a0, a1);
+        ctx.arc(0, 0, innerR, a1, a0, true);
         ctx.closePath();
-        ctx.fillStyle = isWinner ? `rgba(255,255,${Math.round(200 + 55 * pulse)},${0.92 + 0.08 * pulse})` : (segColors[segments[i]] ?? "#444");
-        ctx.globalAlpha = isWinner ? 1 : 0.82;
+        ctx.globalAlpha = isWinner ? 1 : 0.85;
+        ctx.fillStyle = isWinner
+          ? `rgba(255,255,${Math.round(180 + 75 * pulse)},${0.95 + 0.05 * pulse})`
+          : (segColors[segments[i]] ?? "#444");
         ctx.fill();
 
-        // 分隔线
-        ctx.strokeStyle = "#f0c040";
-        ctx.lineWidth = 1.8;
+        // 金色分隔线（沿半径方向）
         ctx.globalAlpha = 1;
+        ctx.strokeStyle = "#f0c040";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a0) * innerR, Math.sin(a0) * innerR);
+        ctx.lineTo(Math.cos(a0) * outerR, Math.sin(a0) * outerR);
         ctx.stroke();
       }
 
-      // 外圈金环
+      // 内外圈金环
       ctx.globalAlpha = 1;
       ctx.strokeStyle = "#f0c040";
-      ctx.lineWidth = 3;
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = 8;
       ctx.shadowColor = "#f0c040";
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(0, 0, wheelR, 0, Math.PI * 2);
+      ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, innerR, 0, Math.PI * 2);
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      // 数字
-      const fontSize = Math.round(wheelR * (N <= 3 ? 0.3 : 0.22));
+      // 数字（画在环形中央）
+      const fontSize = Math.max(9, Math.round((outerR - innerR) * 0.55));
       ctx.font = `900 ${fontSize}px "Trebuchet MS", sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       for (let i = 0; i < N; i++) {
         const ta = currentAngle + (i + 0.5) * segAngle;
-        const tx = Math.cos(ta) * wheelR * 0.68;
-        const ty = Math.sin(ta) * wheelR * 0.68;
         const isWinner = wheel.resolved && segments[i] === wheel.result;
-        ctx.fillStyle = isWinner ? "#1a1a1a" : "#ffffff";
         ctx.globalAlpha = 1;
-        ctx.fillText(segments[i], tx, ty);
+        ctx.fillStyle = isWinner ? "#1a1a1a" : "#ffffff";
+        ctx.fillText(segments[i], Math.cos(ta) * midR, Math.sin(ta) * midR);
       }
 
-      // 指针（顶部三角）
-      const ptrTip = -(wheelR + 10);
-      const ptrBase = -(wheelR - 6);
+      // 指针：顶部小三角，指向外圈
+      const ptrOuter = outerR + 7;
+      const ptrInner = outerR + 1;
       ctx.globalAlpha = 1;
       ctx.fillStyle = "#ffffff";
-      ctx.shadowBlur = 8;
+      ctx.shadowBlur = 6;
       ctx.shadowColor = "#f0c040";
       ctx.beginPath();
-      ctx.moveTo(0, ptrTip);
-      ctx.lineTo(-8, ptrBase);
-      ctx.lineTo(8, ptrBase);
+      ctx.moveTo(0, -ptrOuter);
+      ctx.lineTo(-5, -ptrInner);
+      ctx.lineTo(5, -ptrInner);
       ctx.closePath();
       ctx.fill();
       ctx.shadowBlur = 0;
-
-      // 中心盖帽
-      ctx.fillStyle = "#0a0a0a";
-      ctx.strokeStyle = "#f0c040";
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.arc(0, 0, wheelR * 0.12, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
 
       ctx.restore();
     }

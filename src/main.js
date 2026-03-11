@@ -41,7 +41,7 @@ const ENTRY_HOLD_MS = 1800;
 const ENTRY_OUTRO_MS = 1100;
 
 let selectedId = CHARACTER_LIBRARY[0].id;
-let selectedRosterIds = new Set(CHARACTER_LIBRARY.map((character) => character.id));
+let selectedRosterIds = new Set();
 const matchSettings = {
   includeEdgeHazards: true,
   duelTime: DEFAULT_DUEL_TIME,

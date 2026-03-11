@@ -749,7 +749,7 @@ export class ArenaGame {
           color,
           velocityY: -28,
           lifetime: 0.8,
-          size: 16,
+          size: 22,
         }),
       schedule: (delay, callback) =>
         this.scheduleAction(delay, () =>
@@ -1023,7 +1023,7 @@ export class ArenaGame {
             color: "#ffe17f",
             velocityY: -26,
             lifetime: 0.8,
-            size: 15,
+            size: 20,
           });
           if (actor.essence >= actor.stats.maxEssence) {
             actor.essence = 0;
@@ -1290,7 +1290,7 @@ export class ArenaGame {
       color: turret.color,
       velocityY: -18,
       lifetime: 0.65,
-      size: 14,
+      size: 20,
     });
     return turret;
   }
@@ -1391,7 +1391,7 @@ export class ArenaGame {
           color: "#ffd8ab",
           velocityY: -18,
           lifetime: 0.6,
-          size: 13,
+          size: 18,
         });
         this.shake(5, 0.08);
       }
@@ -1591,7 +1591,7 @@ export class ArenaGame {
       color: config.color ?? "#ff5f59",
       velocityY: config.velocityY ?? -35,
       lifetime: config.lifetime ?? 0.7,
-      size: config.size ?? 18,
+      size: config.size ?? 26,
     });
   }
 
@@ -1620,7 +1620,7 @@ export class ArenaGame {
       color: options.color ?? "#ff5f59",
       velocityY: -32,
       lifetime: 0.76,
-      size: rounded >= 20 ? 24 : 18,
+      size: rounded >= 20 ? 34 : 26,
     });
 
     if (rounded >= 18) {
@@ -1647,7 +1647,7 @@ export class ArenaGame {
         color: "#ffe8c5",
         velocityY: -26,
         lifetime: 0.72,
-        size: 16,
+        size: 22,
       });
     }
     return gained;
@@ -2642,9 +2642,13 @@ export class ArenaGame {
     for (const entry of state.damageTexts) {
       ctx.save();
       ctx.globalAlpha = clamp(entry.lifetime / 0.8, 0, 1);
-      ctx.fillStyle = entry.color;
       ctx.font = `700 ${entry.size}px "Trebuchet MS", "Microsoft YaHei UI", sans-serif`;
       ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "rgba(0,0,0,0.75)";
+      ctx.strokeText(entry.text, entry.position.x, entry.position.y);
+      ctx.fillStyle = entry.color;
       ctx.fillText(entry.text, entry.position.x, entry.position.y);
       ctx.restore();
     }
@@ -2912,7 +2916,7 @@ export class ArenaGame {
         color: "#c8f0ff",
         velocityY: -26,
         lifetime: 0.9,
-        size: 16,
+        size: 22,
       });
       this.shake(8, 0.14);
       this.callbacks.onSound?.({ type: "freeze" });

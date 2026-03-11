@@ -151,6 +151,54 @@ function scheduleBurstRain(api, options = {}) {
   }
 }
 
+// ─── 赌徒·轮盘 辅助函数 ───────────────────────────────────────────────────────
+function applyWheelResult(result, actor, api, game, amount) {
+  const others = game.state.actors.filter((a) => a.alive && a.id !== actor.id);
+  switch (result) {
+    case 1: {
+      if (!others.length) { api.emitText("无目标", actor.position, "#aaa"); break; }
+      const t1 = others[Math.floor(Math.random() * others.length)];
+      game.applyDamage(t1, amount, { type: "skill", color: "#ff4444", attacker: actor });
+      api.emitText(`${t1.name} -${amount}`, actor.position, "#ff6655");
+      break;
+    }
+    case 2: {
+      if (!others.length) { api.emitText("无目标", actor.position, "#aaa"); break; }
+      const t2 = others[Math.floor(Math.random() * others.length)];
+      game.healActor(t2, amount);
+      api.emitText(`${t2.name} +${amount}`, actor.position, "#55ff88");
+      break;
+    }
+    case 3:
+      game.applyDamage(actor, amount, { type: "skill", color: "#ff8844" });
+      api.emitText(`自己 -${amount}`, actor.position, "#ff8844");
+      break;
+    case 4:
+      api.heal(amount);
+      api.emitText(`自己 +${amount}`, actor.position, "#88ff66");
+      break;
+    case 5:
+      for (const t5 of others) game.applyDamage(t5, amount, { type: "skill", color: "#ff3333", attacker: actor });
+      api.emitText(`全场 -${amount}！`, actor.position, "#ff3333");
+      api.shake(10, 0.2);
+      break;
+    case 6:
+      for (const t6 of others) game.healActor(t6, amount);
+      api.emitText(`全场 +${amount}！`, actor.position, "#33dd88");
+      break;
+    default: break;
+  }
+}
+
+function computeWheelFinalAngle(segments, result) {
+  const N = segments.length;
+  const segAngle = (Math.PI * 2) / N;
+  const winIdx = segments.indexOf(result);
+  const rawAngle = -Math.PI / 2 - winIdx * segAngle - segAngle / 2;
+  const normalized = ((rawAngle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  return normalized + 6 * Math.PI * 2; // 6 full rotations before landing
+}
+
 export const CHARACTER_LIBRARY = [
   defineCharacter({
     id: "bee-stinger",
@@ -1651,6 +1699,110 @@ export const CHARACTER_LIBRARY = [
           if (detonations.size > 0) {
             api.emitText("百鬼夜行！", actor.position, "#4dff8e");
           }
+        });
+      },
+    },
+  }),
+
+  defineCharacter({
+    id: "gambler-wheel",
+    name: "赌徒",
+    title: "轮盘",
+    color: "#f0c040",
+    description: "自身生命极低。平A每3秒转动轮盘，历时2秒后随机落到1-6：1=随机敌人-10血，2=随机敌人+10血，3=自己-10血，4=自己+10血，5=全场敌人-10血，6=全场敌人+10血。大招（2精元）开启皇家赌场，仅含1、4、5三个选项，效果加倍。",
+    stats: {
+      maxHp: 100,
+      speed: 205,
+      maxEssence: 2,
+      attackRange: 999,
+      radius: 18,
+    },
+    tuning: {
+      basic: {
+        spinInterval: 3,
+        spinDuration: 2,
+        effectAmount: 10,
+      },
+      ult: {
+        spinDuration: 2.5,
+        effectAmount: 30,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "平A · 轮盘",
+        fields: [
+          editableField("tuning.basic.spinInterval", "触发间隔", { min: 1, step: 0.5, unit: "s" }),
+          editableField("tuning.basic.spinDuration", "旋转时长", { min: 0.5, step: 0.5, unit: "s" }),
+          editableField("tuning.basic.effectAmount", "效果数值", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "大招 · 皇家赌场",
+        fields: [
+          editableField("tuning.ult.spinDuration", "旋转时长", { min: 0.5, step: 0.5, unit: "s" }),
+          editableField("tuning.ult.effectAmount", "效果数值", { min: 1, step: 1 }),
+        ],
+      },
+    ],
+    onSpawn({ actor }) {
+      actor.state.wheel = null;
+    },
+    basicAttack: {
+      name: "轮盘",
+      triggers: [{ type: "interval", interval: 3 }],
+      execute({ actor, api, game }) {
+        if (actor.state.wheel) return;
+        const t = actor.definition.tuning.basic;
+        const segments = [1, 2, 3, 4, 5, 6];
+        const result = segments[Math.floor(Math.random() * segments.length)];
+        actor.state.wheel = {
+          startTime: game.state.elapsed,
+          duration: t.spinDuration,
+          finalAngle: computeWheelFinalAngle(segments, result),
+          segments,
+          result,
+          isUlt: false,
+          resolved: false,
+        };
+        api.schedule(t.spinDuration, ({ actor, api, game }) => {
+          if (!actor.state.wheel) return;
+          actor.state.wheel.resolved = true;
+          applyWheelResult(actor.state.wheel.result, actor, api, game, actor.definition.tuning.basic.effectAmount);
+          api.schedule(1.4, ({ actor }) => { actor.state.wheel = null; });
+        });
+      },
+    },
+    ultimate: {
+      name: "皇家赌场",
+      execute({ actor, api, game }) {
+        if (actor.state.wheel) return;
+        const t = actor.definition.tuning.ult;
+        const segments = [1, 4, 5];
+        const result = segments[Math.floor(Math.random() * segments.length)];
+        actor.state.wheel = {
+          startTime: game.state.elapsed,
+          duration: t.spinDuration,
+          finalAngle: computeWheelFinalAngle(segments, result),
+          segments,
+          result,
+          isUlt: true,
+          resolved: false,
+        };
+        api.announce("皇家赌场！命运的轮盘开始旋转！");
+        api.schedule(t.spinDuration, ({ actor, api, game }) => {
+          if (!actor.state.wheel) return;
+          actor.state.wheel.resolved = true;
+          applyWheelResult(actor.state.wheel.result, actor, api, game, actor.definition.tuning.ult.effectAmount);
+          api.schedule(1.8, ({ actor }) => { actor.state.wheel = null; });
         });
       },
     },

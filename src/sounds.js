@@ -337,6 +337,24 @@ const basicAttackSounds = {
     lfo.start(t); o.start(t); lfo.stop(t + 0.5); o.stop(t + 0.47);
   },
 
+  // 赌徒：轮盘启动 — 轻快齿轮咔哒
+  "gambler-wheel"() {
+    if (throttle("ba:gambler-wheel", 2800)) return;
+    const c = getCtx(); const t = c.currentTime;
+    const master = getMaster(c);
+    // 快速噪声脉冲（齿轮咔哒感）
+    for (let i = 0; i < 4; i++) {
+      const n = makeNoise(c, 0.18);
+      const nf = c.createBiquadFilter();
+      nf.type = "bandpass"; nf.frequency.value = 3000 + i * 400; nf.Q.value = 4;
+      const gn = gainNode(c, 0.22);
+      gn.gain.setValueAtTime(0.22, t + i * 0.07);
+      gn.gain.exponentialRampToValueAtTime(0.001, t + i * 0.07 + 0.06);
+      n.connect(nf); nf.connect(gn); gn.connect(master);
+      n.start(t + i * 0.07); n.stop(t + i * 0.07 + 0.07);
+    }
+  },
+
   // 幻镜：拟态窃取 — 镜面滑过声
   "mirror-mimic"() {
     if (throttle("ba:mirror-mimic", 4500)) return;
@@ -666,6 +684,30 @@ const ultimateSounds = {
     gn.gain.exponentialRampToValueAtTime(0.001, t + 0.88);
     n.connect(lp); lp.connect(gn); gn.connect(master);
     n.start(t); n.stop(t + 0.9);
+  },
+
+  // 赌徒：皇家赌场 — 华丽轮盘开转
+  "gambler-wheel"() {
+    const c = getCtx(); const t = c.currentTime;
+    const master = getMaster(c);
+    // 上扫弦音（期待感）
+    [440, 554, 659, 880].forEach((freq, i) => {
+      const o = osc(c, "sine", freq);
+      const g = gainNode(c, 0.0);
+      g.gain.linearRampToValueAtTime(0.18, t + i * 0.08 + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.08 + 0.35);
+      o.connect(g); g.connect(master);
+      o.start(t + i * 0.08); o.stop(t + i * 0.08 + 0.38);
+    });
+    // 低频轰鸣
+    const n = makeNoise(c, 0.4);
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 180;
+    const gn = gainNode(c, 0.28);
+    gn.gain.setValueAtTime(0.28, t);
+    gn.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    n.connect(lp); lp.connect(gn); gn.connect(master);
+    n.start(t); n.stop(t + 0.52);
   },
 
   // 幻镜：偷天换日 — 镜面震荡+宏大滑音

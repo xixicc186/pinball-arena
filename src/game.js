@@ -1856,6 +1856,7 @@ export class ArenaGame {
     } else {
       this.renderActors(ctx, state);
     }
+    this.renderGamblerWheels(ctx, state);
     this.renderGhosts(ctx, state);
     this.renderParticles(ctx, state);
     this.renderDamageTexts(ctx, state);
@@ -2490,6 +2491,9 @@ export class ArenaGame {
         break;
       case "mirror-mimic":
         this.renderMirrorMimicBall(ctx, actor, elapsed);
+        break;
+      case "gambler-wheel":
+        this.renderGamblerBall(ctx, actor, elapsed);
         break;
       default:
         ctx.fillStyle = actor.color;
@@ -4318,6 +4322,157 @@ export class ArenaGame {
       ctx.beginPath();
       ctx.arc(wx, wy, 3.2, 0, Math.PI * 2);
       ctx.fill();
+    }
+  }
+
+  renderGamblerBall(ctx, actor, elapsed) {
+    const r = actor.radius;
+
+    // 赌场绿底 + 金边
+    const shell = ctx.createRadialGradient(-r * 0.25, -r * 0.3, 1, 0, 0, r);
+    shell.addColorStop(0, "#2a6038");
+    shell.addColorStop(0.55, "#174428");
+    shell.addColorStop(1, "#071810");
+    ctx.fillStyle = shell;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 金色外圈
+    ctx.strokeStyle = "#f0c040";
+    ctx.lineWidth = 2.4;
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = "#f0c040";
+    ctx.beginPath();
+    ctx.arc(0, 0, r - 1.2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // 旋转轮盘辐条（6根）
+    const spokeR = r * 0.52;
+    ctx.strokeStyle = "rgba(240,192,64,0.6)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 6; i++) {
+      const a = elapsed * 0.9 + (i * Math.PI * 2) / 6;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * spokeR, Math.sin(a) * spokeR);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(0, 0, spokeR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 中心金点
+    ctx.fillStyle = "#f0c040";
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = "#f0c040";
+    ctx.beginPath();
+    ctx.arc(0, 0, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 高光
+    const hl = ctx.createRadialGradient(-r * 0.28, -r * 0.32, 0, -r * 0.28, -r * 0.32, r * 0.4);
+    hl.addColorStop(0, "rgba(255,255,200,0.35)");
+    hl.addColorStop(1, "rgba(255,255,200,0)");
+    ctx.fillStyle = hl;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  renderGamblerWheels(ctx, state) {
+    for (const actor of state.actors) {
+      if (!actor.alive || !actor.state.wheel) continue;
+      const wheel = actor.state.wheel;
+      const progress = Math.min((state.elapsed - wheel.startTime) / wheel.duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const currentAngle = wheel.resolved ? wheel.finalAngle : eased * wheel.finalAngle;
+      const segments = wheel.segments;
+      const N = segments.length;
+      const segAngle = (Math.PI * 2) / N;
+      const wheelR = actor.radius * (wheel.isUlt ? 3.8 : 2.8);
+
+      // 颜色方案：红=坏（伤害自己/治疗敌人），绿=好（治疗自己/伤害敌人）
+      const segColors = { 1: "#b82020", 2: "#1a7a38", 3: "#cc4400", 4: "#1a8844", 5: "#880a0a", 6: "#0a6688" };
+
+      ctx.save();
+      ctx.translate(actor.position.x, actor.position.y);
+
+      // 轮盘扇形
+      for (let i = 0; i < N; i++) {
+        const a0 = currentAngle + i * segAngle;
+        const a1 = a0 + segAngle;
+        const isWinner = wheel.resolved && segments[i] === wheel.result;
+        const pulse = isWinner ? (0.5 + 0.5 * Math.sin(state.elapsed * 9)) : 0;
+
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, wheelR, a0, a1);
+        ctx.closePath();
+        ctx.fillStyle = isWinner ? `rgba(255,255,${Math.round(200 + 55 * pulse)},${0.92 + 0.08 * pulse})` : (segColors[segments[i]] ?? "#444");
+        ctx.globalAlpha = isWinner ? 1 : 0.82;
+        ctx.fill();
+
+        // 分隔线
+        ctx.strokeStyle = "#f0c040";
+        ctx.lineWidth = 1.8;
+        ctx.globalAlpha = 1;
+        ctx.stroke();
+      }
+
+      // 外圈金环
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = "#f0c040";
+      ctx.lineWidth = 3;
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = "#f0c040";
+      ctx.beginPath();
+      ctx.arc(0, 0, wheelR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // 数字
+      const fontSize = Math.round(wheelR * (N <= 3 ? 0.3 : 0.22));
+      ctx.font = `900 ${fontSize}px "Trebuchet MS", sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (let i = 0; i < N; i++) {
+        const ta = currentAngle + (i + 0.5) * segAngle;
+        const tx = Math.cos(ta) * wheelR * 0.68;
+        const ty = Math.sin(ta) * wheelR * 0.68;
+        const isWinner = wheel.resolved && segments[i] === wheel.result;
+        ctx.fillStyle = isWinner ? "#1a1a1a" : "#ffffff";
+        ctx.globalAlpha = 1;
+        ctx.fillText(segments[i], tx, ty);
+      }
+
+      // 指针（顶部三角）
+      const ptrTip = -(wheelR + 10);
+      const ptrBase = -(wheelR - 6);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#ffffff";
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = "#f0c040";
+      ctx.beginPath();
+      ctx.moveTo(0, ptrTip);
+      ctx.lineTo(-8, ptrBase);
+      ctx.lineTo(8, ptrBase);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // 中心盖帽
+      ctx.fillStyle = "#0a0a0a";
+      ctx.strokeStyle = "#f0c040";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, wheelR * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.restore();
     }
   }
 

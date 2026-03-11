@@ -565,6 +565,7 @@ export class ArenaGame {
       const bounced = this.resolveArenaCollision(actor);
       if (bounced) {
         this.fireTrigger(actor, "onWallBounce", { bounced });
+        this.callbacks.onSound?.({ type: "wallBounce" });
       }
 
       this.applyHazards(actor, dt);
@@ -696,6 +697,7 @@ export class ArenaGame {
       enemies: this.getEnemies(actor),
       game: this,
     });
+    this.callbacks.onSound?.({ type: "basicAttack", characterId: actor.characterId });
   }
 
   castUltimate(actor) {
@@ -705,6 +707,7 @@ export class ArenaGame {
     if (actor.state.frozenTime > 0) return;
     actor.highlightTime = 0.45;
     this.announce(`${actor.name} 释放了 ${actor.definition.ultimate.name}。`);
+    this.callbacks.onSound?.({ type: "ultimate", characterId: actor.characterId });
     actor.definition.ultimate.execute({
       actor,
       api: this.createSkillApi(actor),
@@ -948,6 +951,9 @@ export class ArenaGame {
           other: left,
           normal: scale(normal, -1),
         });
+        if (velocityAlongNormal < 0) {
+          this.callbacks.onSound?.({ type: "ballCollision", impactSpeed: Math.abs(velocityAlongNormal) });
+        }
       }
     }
   }

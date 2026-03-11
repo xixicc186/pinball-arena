@@ -7,6 +7,7 @@
 } from "./characters.js";
 import { ArenaGame } from "./game.js";
 import { clearOverrides, loadAllOverrides, saveOverrides } from "./db.js";
+import { playSound, resumeAudio } from "./sounds.js";
 
 const rosterElement = document.getElementById("roster");
 const rosterStatusElement = document.getElementById("roster-status");
@@ -1325,6 +1326,9 @@ const game = new ArenaGame(canvas, {
   onAnnouncement({ stamp, message }) {
     pushFeed(stamp, message);
   },
+  onSound(event) {
+    playSound(event);
+  },
   onStateChange(snapshot) {
     updateHud(snapshot);
     renderScoreboard(snapshot);
@@ -1362,10 +1366,12 @@ const game = new ArenaGame(canvas, {
 });
 
 startButton.addEventListener("click", () => {
+  resumeAudio();
   startMatch();
 });
 
 recordButton?.addEventListener("click", () => {
+  resumeAudio();
   if (recordingState.active) {
     stopRecordedMatch();
     return;

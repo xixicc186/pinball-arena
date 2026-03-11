@@ -270,6 +270,30 @@ const basicAttackSounds = {
     o.start(t); o.stop(t + 0.33);
   },
 
+  // 鹰眼·狙击手：锁定 — 高频细锐 ping
+  "eagle-eye"() {
+    if (throttle("ba:eagle-eye", 800)) return;
+    const c = getCtx(); const t = c.currentTime;
+    const master = getMaster(c);
+    // 锁定提示音：快速下扫
+    const o = c.createOscillator();
+    o.type = "sine"; o.frequency.value = 2200;
+    o.frequency.exponentialRampToValueAtTime(1600, t + 0.08);
+    const g = gainNode(c, 0.28);
+    g.gain.setValueAtTime(0.28, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t + 0.11);
+    // 细噪声点击感
+    const n = makeNoise(c, 0.15);
+    const hf = c.createBiquadFilter();
+    hf.type = "highpass"; hf.frequency.value = 5000;
+    const gn = gainNode(c, 0.12);
+    gn.gain.setValueAtTime(0.12, t); gn.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    n.connect(hf); hf.connect(gn); gn.connect(master);
+    n.start(t); n.stop(t + 0.06);
+  },
+
   // 风暴·气象台：气旋卷起 — 低频呼啸扫频
   "storm-weather"() {
     if (throttle("ba:storm-weather", 500)) return;
@@ -509,6 +533,39 @@ const ultimateSounds = {
   },
 
   // 寒冰连射：冰爆全屏
+  // 鹰眼·狙击手：死神降临 — 枪声冲击 + 低频警报
+  "eagle-eye"() {
+    const c = getCtx(); const t = c.currentTime;
+    const master = getMaster(c);
+    // 枪声爆裂
+    const n = makeNoise(c, 0.7);
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 2500;
+    lp.frequency.exponentialRampToValueAtTime(400, t + 0.06);
+    const gn = gainNode(c, 0.6);
+    gn.gain.setValueAtTime(0.6, t);
+    gn.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    n.connect(lp); lp.connect(gn); gn.connect(master);
+    n.start(t); n.stop(t + 0.11);
+    // 低频震鸣
+    const o = c.createOscillator();
+    o.type = "sawtooth"; o.frequency.value = 80;
+    o.frequency.exponentialRampToValueAtTime(40, t + 0.45);
+    const go = gainNode(c, 0.32);
+    go.gain.setValueAtTime(0.32, t);
+    go.gain.exponentialRampToValueAtTime(0.001, t + 0.48);
+    o.connect(go); go.connect(master);
+    o.start(t); o.stop(t + 0.5);
+    // 高频警报扫频
+    const o2 = c.createOscillator();
+    o2.type = "square"; o2.frequency.value = 1200;
+    o2.frequency.exponentialRampToValueAtTime(800, t + 0.35);
+    const g2 = gainNode(c, 0.1);
+    g2.gain.setValueAtTime(0.1, t); g2.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
+    o2.connect(g2); g2.connect(master);
+    o2.start(t); o2.stop(t + 0.37);
+  },
+
   // 风暴·气象台：终极风暴 — 轰鸣共鸣 + 多层风啸
   "storm-weather"() {
     const c = getCtx(); const t = c.currentTime;

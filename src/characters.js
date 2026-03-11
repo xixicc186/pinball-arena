@@ -1302,6 +1302,147 @@ export const CHARACTER_LIBRARY = [
     },
   }),
 
+  // ─── 鹰眼·狙击手 ──────────────────────────────────────────────────────────
+  defineCharacter({
+    id: "eagle-eye",
+    name: "鹰眼",
+    title: "狙击手",
+    color: "#4a6038",
+    description: "极限视距与单点秒杀。锁定血量最少的敌人，静止瞄准后发射可被遮挡的高伤子弹；击杀即刷新冷却，连杀不停。大招进入隐身无敌状态，向全场所有敌人各补一枪。",
+    stats: {
+      maxHp: 80,
+      speed: 165,
+      maxEssence: 3,
+      attackRange: 9999,
+      radius: 17,
+    },
+    tuning: {
+      basic: {
+        aimDuration: 2,
+        bulletSpeed: 1200,
+        damage: 20,
+        knockback: 30,
+      },
+      ult: {
+        stealthDuration: 0.4,
+        shotDelay: 0.35,
+        damage: 20,
+        bulletSpeed: 1200,
+        knockback: 50,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "平A · 致命锁定",
+        fields: [
+          editableField("basicAttack.triggers.0.interval", "狙击间隔", { min: 0.5, step: 0.5, unit: "s" }),
+          editableField("tuning.basic.aimDuration", "瞄准时间", { min: 0.2, max: 5, step: 0.1, unit: "s" }),
+          editableField("tuning.basic.bulletSpeed", "子弹速度", { min: 200, step: 50 }),
+          editableField("tuning.basic.damage", "单发伤害", { min: 1, step: 1 }),
+          editableField("tuning.basic.knockback", "击退力", { min: 0, step: 5 }),
+        ],
+      },
+      {
+        title: "大招 · 死神降临",
+        fields: [
+          editableField("tuning.ult.stealthDuration", "隐身基础时长", { min: 0.1, max: 2, step: 0.1, unit: "s" }),
+          editableField("tuning.ult.shotDelay", "各枪间隔", { min: 0.1, max: 2, step: 0.05, unit: "s" }),
+          editableField("tuning.ult.damage", "单发伤害", { min: 1, step: 1 }),
+          editableField("tuning.ult.knockback", "击退力", { min: 0, step: 5 }),
+        ],
+      },
+    ],
+    basicAttack: {
+      name: "致命锁定",
+      triggers: [{ type: "interval", interval: 4 }],
+      execute({ actor, api }) {
+        const t = actor.definition.tuning.basic;
+        const target = api.findLowestHpEnemy();
+        if (!target) return;
+
+        actor.state.aimingTargetId = target.id;
+        api.lockMovement(t.aimDuration);
+
+        api.schedule(t.aimDuration, ({ actor, api }) => {
+          if (!actor.alive) return;
+          actor.state.aimingTargetId = null;
+          if (!target.alive) return;
+
+          const dx = target.position.x - actor.position.x;
+          const dy = target.position.y - actor.position.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len < 1) return;
+
+          api.spawnProjectile({
+            position: { ...actor.position },
+            direction: { x: dx / len, y: dy / len },
+            speed: t.bulletSpeed,
+            radius: 4,
+            damage: t.damage,
+            color: "#ff3333",
+            lifetime: 2.5,
+            bounces: 0,
+            knockback: t.knockback,
+            pierce: 0,
+          });
+        });
+      },
+    },
+    onKill({ actor }) {
+      // 击杀刷新冷却，立即开始下一次瞄准
+      for (const [key] of actor.cooldowns) {
+        if (key.startsWith("interval:")) {
+          actor.cooldowns.set(key, 0);
+        }
+      }
+    },
+    ultimate: {
+      name: "死神降临",
+      execute({ actor, api, enemies }) {
+        const t = actor.definition.tuning.ult;
+        const targets = enemies.filter((e) => e.alive);
+        if (targets.length === 0) return;
+
+        const totalDuration = t.stealthDuration + targets.length * t.shotDelay + 0.5;
+        api.grantInvulnerable(totalDuration);
+        actor.state.stealthTime = totalDuration;
+
+        for (let i = 0; i < targets.length; i++) {
+          const target = targets[i];
+          api.schedule(t.stealthDuration + i * t.shotDelay, ({ actor, api }) => {
+            if (!actor.alive || !target.alive) return;
+
+            const dx = target.position.x - actor.position.x;
+            const dy = target.position.y - actor.position.y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len < 1) return;
+
+            api.spawnProjectile({
+              position: { ...actor.position },
+              direction: { x: dx / len, y: dy / len },
+              speed: t.bulletSpeed,
+              radius: 4,
+              damage: t.damage,
+              color: "#ff2222",
+              lifetime: 2.5,
+              bounces: 0,
+              knockback: t.knockback,
+              pierce: 0,
+            });
+          });
+        }
+      },
+    },
+  }),
+
   // ─── 风暴·气象台 ──────────────────────────────────────────────────────────
   defineCharacter({
     id: "storm-weather",

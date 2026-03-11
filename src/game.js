@@ -363,6 +363,8 @@ export class ArenaGame {
         frozenTime: 0,
         capturedByTornadoId: null,
         disarmedTime: 0,
+        aimingTargetId: null,
+        stealthTime: 0,
       },
     };
 
@@ -605,6 +607,7 @@ export class ArenaGame {
     actor.state.frostStackTime = Math.max(0, actor.state.frostStackTime - dt);
     actor.state.frozenTime = Math.max(0, actor.state.frozenTime - dt);
     actor.state.disarmedTime = Math.max(0, actor.state.disarmedTime - dt);
+    actor.state.stealthTime = Math.max(0, actor.state.stealthTime - dt);
 
     if (actor.state.forcedTargetTime <= 0) {
       actor.state.forcedTargetId = null;
@@ -2251,6 +2254,12 @@ export class ArenaGame {
       ctx.save();
       if (!actor.alive) {
         ctx.globalAlpha = 0.25;
+      } else if (actor.state.stealthTime > 0) {
+        ctx.globalAlpha = 0.22;
+      }
+
+      if (actor.characterId === "eagle-eye" && actor.state.aimingTargetId && actor.alive) {
+        this.renderSniperAimLine(ctx, actor, state);
       }
 
       if (actor.state.invulnerableTime > 0) {
@@ -2408,6 +2417,9 @@ export class ArenaGame {
         break;
       case "storm-weather":
         this.renderWeatherBall(ctx, actor, elapsed);
+        break;
+      case "eagle-eye":
+        this.renderEagleBall(ctx, actor, elapsed);
         break;
       default:
         ctx.fillStyle = actor.color;
@@ -3707,6 +3719,126 @@ export class ArenaGame {
     ctx.fillStyle = "rgba(255,255,255,0.22)";
     ctx.beginPath();
     ctx.arc(-radius * 0.3, -radius * 0.34, radius * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ─── 鹰眼·狙击手 ──────────────────────────────────────────────────────────
+
+  renderSniperAimLine(ctx, actor, state) {
+    const target = state.actors.find((a) => a.id === actor.state.aimingTargetId && a.alive);
+    if (!target) return;
+
+    const from = actor.position;
+    const to = target.position;
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const totalDist = Math.sqrt(dx * dx + dy * dy);
+    if (totalDist < 1) return;
+
+    // 检测是否有角色挡在路线上
+    let blockPoint = null;
+    let minDist = totalDist;
+    for (const other of state.actors) {
+      if (!other.alive || other.id === actor.id || other.id === target.id) continue;
+      const closest = closestPointOnSegment(other.position, from, to);
+      const distToLine = distance(closest, other.position);
+      if (distToLine < other.radius) {
+        const d = distance(from, closest);
+        if (d < minDist) {
+          minDist = d;
+          blockPoint = closest;
+        }
+      }
+    }
+
+    const endPoint = blockPoint ?? to;
+    const pulse = 0.55 + Math.sin(state.elapsed * 10) * 0.25;
+
+    ctx.save();
+    // 红外瞄准线
+    ctx.strokeStyle = `rgba(255, 30, 30, ${pulse * 0.8})`;
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([7, 5]);
+    ctx.lineDashOffset = -state.elapsed * 38;
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(endPoint.x, endPoint.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 准星（未被遮挡时显示在目标上）
+    if (!blockPoint) {
+      ctx.strokeStyle = `rgba(255, 50, 50, ${pulse})`;
+      ctx.lineWidth = 1.5;
+      const cs = target.radius * 0.65;
+      ctx.beginPath();
+      ctx.moveTo(to.x - cs, to.y); ctx.lineTo(to.x - cs * 0.3, to.y);
+      ctx.moveTo(to.x + cs * 0.3, to.y); ctx.lineTo(to.x + cs, to.y);
+      ctx.moveTo(to.x, to.y - cs); ctx.lineTo(to.x, to.y - cs * 0.3);
+      ctx.moveTo(to.x, to.y + cs * 0.3); ctx.lineTo(to.x, to.y + cs);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255, 50, 50, ${pulse * 0.6})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(to.x, to.y, target.radius + 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  renderEagleBall(ctx, actor, elapsed) {
+    const r = actor.radius;
+    const isAiming = !!actor.state?.aimingTargetId;
+
+    // 底色：深橄榄/钢铁色
+    const g = ctx.createRadialGradient(-r * 0.28, -r * 0.3, r * 0.04, 0, 0, r);
+    g.addColorStop(0, "#7a8e6a");
+    g.addColorStop(0.5, "#44603a");
+    g.addColorStop(1, "#1c2e18");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 瞄准镜外圈
+    ctx.strokeStyle = isAiming ? "rgba(255, 80, 60, 0.6)" : "rgba(160, 215, 120, 0.45)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.54, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 十字线（对角缺口设计）
+    const armLen = r * 0.45;
+    const gap = r * 0.16;
+    ctx.strokeStyle = isAiming ? "rgba(255, 90, 60, 0.85)" : "rgba(170, 230, 130, 0.75)";
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(-armLen, 0); ctx.lineTo(-gap, 0);
+    ctx.moveTo(gap, 0);     ctx.lineTo(armLen, 0);
+    ctx.moveTo(0, -armLen); ctx.lineTo(0, -gap);
+    ctx.moveTo(0, gap);     ctx.lineTo(0, armLen);
+    ctx.stroke();
+
+    // 中心点
+    ctx.fillStyle = isAiming ? "rgba(255, 60, 60, 0.95)" : "rgba(180, 240, 140, 0.85)";
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 隐身时额外闪烁效果
+    if (actor.state?.stealthTime > 0) {
+      const flicker = 0.3 + Math.sin(elapsed * 15) * 0.2;
+      ctx.strokeStyle = `rgba(140, 220, 255, ${flicker})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // 高光
+    ctx.fillStyle = "rgba(255,255,255,0.13)";
+    ctx.beginPath();
+    ctx.arc(-r * 0.31, -r * 0.33, r * 0.22, 0, Math.PI * 2);
     ctx.fill();
   }
 

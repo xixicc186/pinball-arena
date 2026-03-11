@@ -204,17 +204,30 @@ const basicAttackSounds = {
     n.start(t); n.stop(t + 0.29);
   },
 
-  // 汲取者：鲜血锁链 — 低频抽吸
+  // 汲取者：鲜血锁链 — 锁链射出嗖声 + 咬合冲击
   "blood-leech"() {
     if (throttle("ba:blood-leech", 380)) return;
     const c = getCtx(); const t = c.currentTime;
-    const o = osc(c, "sine", 85);
-    o.frequency.linearRampToValueAtTime(60, t + 0.18);
-    const g = gainNode(c, 0.5);
-    g.gain.setValueAtTime(0.5, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-    o.connect(g); g.connect(getMaster(c));
-    o.start(t); o.stop(t + 0.21);
+    const master = getMaster(c);
+    // 锁链射出：高频噪声下扫（嗖）
+    const n = makeNoise(c, 0.14);
+    const f = c.createBiquadFilter();
+    f.type = "bandpass"; f.frequency.value = 3200; f.Q.value = 1.2;
+    f.frequency.exponentialRampToValueAtTime(420, t + 0.14);
+    const g = gainNode(c, 0.58);
+    g.gain.setValueAtTime(0.12, t);
+    g.gain.linearRampToValueAtTime(0.58, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    n.connect(f); f.connect(g); g.connect(master);
+    n.start(t); n.stop(t + 0.15);
+    // 咬合瞬间：中频锯齿冲击
+    const o = osc(c, "sawtooth", 280);
+    o.frequency.exponentialRampToValueAtTime(95, t + 0.1);
+    const go = gainNode(c, 0.45);
+    go.gain.setValueAtTime(0.45, t + 0.03);
+    go.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    o.connect(go); go.connect(master);
+    o.start(t + 0.03); o.stop(t + 0.19);
   },
 
   // 欺诈师：光影镜像 — 闪烁和弦
@@ -384,18 +397,41 @@ const ultimateSounds = {
     }
   },
 
-  // 血池降临：深沉低音脉搏
+  // 血池降临：多锁链同时咬合 — 湿重冲击 + 血腥低吼
   "blood-leech"() {
     const c = getCtx(); const t = c.currentTime;
-    const o = osc(c, "sine", 52);
-    const lfo = osc(c, "sine", 3);
-    const lg = gainNode(c, 18);
-    lfo.connect(lg); lg.connect(o.frequency);
-    const g = gainNode(c, 0.82);
-    g.gain.setValueAtTime(0.82, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
-    o.connect(g); g.connect(getMaster(c));
-    lfo.start(t); o.start(t); o.stop(t + 0.66); lfo.stop(t + 0.66);
+    const master = getMaster(c);
+    // 血腥低吼（低频共鸣）
+    const o = osc(c, "sawtooth", 130);
+    o.frequency.exponentialRampToValueAtTime(48, t + 0.5);
+    const fLow = c.createBiquadFilter();
+    fLow.type = "lowpass"; fLow.frequency.value = 600;
+    const go = gainNode(c, 0.85);
+    go.gain.setValueAtTime(0.85, t);
+    go.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+    o.connect(fLow); fLow.connect(go); go.connect(master);
+    o.start(t); o.stop(t + 0.56);
+    // 湿重冲击噪声
+    const n = makeNoise(c, 0.18);
+    const fMid = c.createBiquadFilter();
+    fMid.type = "bandpass"; fMid.frequency.value = 850; fMid.Q.value = 1.5;
+    const gn = gainNode(c, 0.78);
+    gn.gain.setValueAtTime(0.78, t);
+    gn.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    n.connect(fMid); fMid.connect(gn); gn.connect(master);
+    n.start(t); n.stop(t + 0.19);
+    // 三道锁链射出（错开 30ms）
+    [0, 0.03, 0.07].forEach((delay) => {
+      const nb = makeNoise(c, 0.12);
+      const fb = c.createBiquadFilter();
+      fb.type = "bandpass"; fb.frequency.value = 2800; fb.Q.value = 1;
+      fb.frequency.exponentialRampToValueAtTime(380, t + delay + 0.12);
+      const gb = gainNode(c, 0.48);
+      gb.gain.setValueAtTime(0.48, t + delay);
+      gb.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.13);
+      nb.connect(fb); fb.connect(gb); gb.connect(master);
+      nb.start(t + delay); nb.stop(t + delay + 0.14);
+    });
   },
 
   // 镜像杀阵：玻璃碎裂 + 泛音环绕

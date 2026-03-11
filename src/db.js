@@ -9,6 +9,7 @@ const HEADERS = {
 };
 
 const TABLE = `${SUPABASE_URL}/rest/v1/character_tuning`;
+const INTRO_TABLE = `${SUPABASE_URL}/rest/v1/character_intro`;
 
 export async function loadAllOverrides() {
   try {
@@ -50,3 +51,38 @@ export async function clearOverrides(characterId) {
   }
 }
 
+// ─── 出场介绍文字 ─────────────────────────────────────────────────────────────
+
+export async function loadAllIntros() {
+  try {
+    const res = await fetch(
+      `${INTRO_TABLE}?select=character_id,name,title,description,basic_attack_name,ultimate_name`,
+      { headers: HEADERS },
+    );
+    if (!res.ok) return {};
+    const rows = await res.json();
+    return Object.fromEntries(rows.map((row) => [row.character_id, row]));
+  } catch {
+    return {};
+  }
+}
+
+export async function saveIntro(characterId, intro) {
+  try {
+    await fetch(INTRO_TABLE, {
+      method: "POST",
+      headers: { ...HEADERS, Prefer: "resolution=merge-duplicates" },
+      body: JSON.stringify({
+        character_id: characterId,
+        name: intro.name ?? null,
+        title: intro.title ?? null,
+        description: intro.description ?? null,
+        basic_attack_name: intro.basicAttackName ?? null,
+        ultimate_name: intro.ultimateName ?? null,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+  } catch {
+    // 网络错误时静默失败
+  }
+}

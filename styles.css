@@ -840,6 +840,52 @@ code {
   color: var(--accent-soft);
 }
 
+/* ── 出场介绍文字编辑区 ───────────────────────────────────────────────────── */
+
+.intro-text-grid {
+  grid-template-columns: 1fr;
+}
+
+.intro-field {
+  position: relative;
+}
+
+.intro-input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.22);
+  outline: none;
+  font-family: inherit;
+  font-size: 13px;
+  resize: vertical;
+  transition: border-color 0.15s;
+}
+
+.intro-input:focus {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+textarea.intro-input {
+  line-height: 1.5;
+}
+
+.intro-save-status {
+  font-size: 11px;
+  min-height: 16px;
+  transition: color 0.2s;
+}
+
+.intro-save-status.saving {
+  color: var(--muted);
+}
+
+.intro-save-status.saved {
+  color: #6fcf97;
+}
+
 @media (max-width: 1120px) {
   body {
     padding: 12px;

@@ -6,7 +6,7 @@
   updateCharacterValue,
 } from "./characters.js";
 import { ArenaGame } from "./game.js";
-import { clearOverrides, loadAllOverrides, saveOverrides } from "./db.js";
+import { clearOverrides, loadAllOverrides, saveOverrides, loadAllIntros, saveIntro } from "./db.js";
 import { getAudioStream, playSound, resumeAudio } from "./sounds.js";
 
 const rosterElement = document.getElementById("roster");
@@ -71,6 +71,20 @@ const entryState = {
   animStart: 0,
 };
 const battleFeedItems = [];
+
+// 出场介绍文字覆盖（从 Supabase 加载，key = characterId）
+const introCache = {};
+
+function getIntroText(characterId, character) {
+  const row = introCache[characterId] ?? {};
+  return {
+    name: row.name ?? character.name,
+    title: row.title ?? character.title,
+    description: row.description ?? character.description,
+    basicAttackName: row.basic_attack_name ?? character.basicAttack?.name ?? "",
+    ultimateName: row.ultimate_name ?? character.ultimate?.name ?? "",
+  };
+}
 
 function sanitizeDuelTime(value) {
   return Math.max(5, Math.min(180, Math.round(value || DEFAULT_DUEL_TIME)));
@@ -295,6 +309,96 @@ function renderEditor() {
     block.appendChild(grid);
     editorElement.appendChild(block);
   });
+
+  // ── 出场介绍编辑区 ──
+  const introBlock = document.createElement("section");
+  introBlock.className = "editor-section";
+
+  const introTitle = document.createElement("h3");
+  introTitle.textContent = "出场介绍文字";
+  introBlock.appendChild(introTitle);
+
+  const introNote = document.createElement("p");
+  introNote.className = "editor-note";
+  introNote.textContent = "修改后将保存到云端，下次出场动画中生效。留空则恢复默认文字。";
+  introBlock.appendChild(introNote);
+
+  const introGrid = document.createElement("div");
+  introGrid.className = "editor-grid intro-text-grid";
+
+  const intro = getIntroText(character.id, character);
+
+  const introFields = [
+    { key: "name", label: "角色名", value: intro.name, placeholder: character.name },
+    { key: "title", label: "副标题", value: intro.title, placeholder: character.title },
+    { key: "description", label: "介绍文字", value: intro.description, placeholder: character.description, multiline: true },
+    { key: "basicAttackName", label: "普攻名称", value: intro.basicAttackName, placeholder: character.basicAttack?.name ?? "" },
+    { key: "ultimateName", label: "大招名称", value: intro.ultimateName, placeholder: character.ultimate?.name ?? "" },
+  ];
+
+  introFields.forEach(({ key, label, value, placeholder, multiline }) => {
+    const wrapper = document.createElement("label");
+    wrapper.className = "field intro-field";
+
+    const span = document.createElement("span");
+    span.textContent = label;
+    wrapper.appendChild(span);
+
+    const input = multiline
+      ? document.createElement("textarea")
+      : document.createElement("input");
+
+    if (!multiline) input.type = "text";
+    input.className = "intro-input";
+    input.value = value;
+    input.placeholder = `默认：${placeholder}`;
+    if (multiline) {
+      input.rows = 3;
+    }
+
+    const saveStatus = document.createElement("span");
+    saveStatus.className = "intro-save-status";
+
+    input.addEventListener("blur", async () => {
+      const raw = input.value.trim();
+      const dbKey = {
+        name: "name",
+        title: "title",
+        description: "description",
+        basicAttackName: "basic_attack_name",
+        ultimateName: "ultimate_name",
+      }[key];
+
+      if (!introCache[character.id]) introCache[character.id] = {};
+      if (raw === "") {
+        introCache[character.id][dbKey] = null;
+      } else {
+        introCache[character.id][dbKey] = raw;
+      }
+
+      saveStatus.textContent = "保存中…";
+      saveStatus.className = "intro-save-status saving";
+
+      const row = introCache[character.id];
+      await saveIntro(character.id, {
+        name: row.name ?? null,
+        title: row.title ?? null,
+        description: row.description ?? null,
+        basicAttackName: row.basic_attack_name ?? null,
+        ultimateName: row.ultimate_name ?? null,
+      });
+
+      saveStatus.textContent = "已保存";
+      saveStatus.className = "intro-save-status saved";
+      setTimeout(() => { saveStatus.textContent = ""; saveStatus.className = "intro-save-status"; }, 2000);
+    });
+
+    wrapper.append(input, saveStatus);
+    introGrid.appendChild(wrapper);
+  });
+
+  introBlock.appendChild(introGrid);
+  editorElement.appendChild(introBlock);
 }
 
 function renderScoreboard(snapshot) {
@@ -758,19 +862,18 @@ function runEntryAnimation(characterIds) {
     card.style.setProperty("--char-color", character.color);
     card.style.animationDelay = `${index * ENTRY_CARD_STAGGER_MS}ms`;
 
-    const basicName = character.basicAttack?.name ?? "";
-    const ultName = character.ultimate?.name ?? "";
+    const intro = getIntroText(character.id, character);
     const skillsHtml = [
-      basicName ? `<div class="entry-skill"><span class="entry-skill-label">普攻</span><span class="entry-skill-name">${basicName}</span></div>` : "",
-      ultName ? `<div class="entry-skill"><span class="entry-skill-label">大招</span><span class="entry-skill-name">${ultName}</span></div>` : "",
+      intro.basicAttackName ? `<div class="entry-skill"><span class="entry-skill-label">普攻</span><span class="entry-skill-name">${intro.basicAttackName}</span></div>` : "",
+      intro.ultimateName ? `<div class="entry-skill"><span class="entry-skill-label">大招</span><span class="entry-skill-name">${intro.ultimateName}</span></div>` : "",
     ].join("");
 
     card.innerHTML = `
       <canvas class="entry-card-ball" width="${canvasSize}" height="${canvasSize}" style="width:${cssSize}px;height:${cssSize}px;"></canvas>
       <div class="entry-card-info">
-        <div class="entry-card-name">${character.name}</div>
-        <div class="entry-card-title">${character.title}</div>
-        ${character.description ? `<div class="entry-card-desc">${character.description}</div>` : ""}
+        <div class="entry-card-name">${intro.name}</div>
+        <div class="entry-card-title">${intro.title}</div>
+        ${intro.description ? `<div class="entry-card-desc">${intro.description}</div>` : ""}
         <div class="entry-card-skills">${skillsHtml}</div>
       </div>
     `;
@@ -1432,7 +1535,8 @@ duelTimeInput.addEventListener("change", () => {
 });
 
 async function initDb() {
-  const allOverrides = await loadAllOverrides();
+  const [allOverrides, allIntros] = await Promise.all([loadAllOverrides(), loadAllIntros()]);
+
   let hasChanges = false;
   for (const [characterId, overrides] of Object.entries(allOverrides)) {
     for (const [path, value] of Object.entries(overrides)) {
@@ -1440,7 +1544,12 @@ async function initDb() {
       hasChanges = true;
     }
   }
-  if (hasChanges) {
+
+  for (const [characterId, row] of Object.entries(allIntros)) {
+    introCache[characterId] = row;
+  }
+
+  if (hasChanges || Object.keys(allIntros).length > 0) {
     renderRoster();
     renderEditor();
   }

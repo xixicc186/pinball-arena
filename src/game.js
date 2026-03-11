@@ -2417,10 +2417,13 @@ export class ArenaGame {
     ctx.shadowBlur = glow;
     ctx.shadowColor = actor.color;
 
-    // 偷天换日：非宿主角色渲染为宿主外形
+    // 变身覆盖：拟态窃取（幻镜本体）或偷天换日（非宿主），临时替换渲染ID和颜色
     let mimicOverrideId = null;
     let mimicOverrideColor = null;
-    if (this.state.mirrorUlt?.hostId && actor.id !== this.state.mirrorUlt.hostId) {
+    let showMimicRing = false;
+
+    if (this.state?.mirrorUlt?.hostId && actor.id !== this.state.mirrorUlt.hostId) {
+      // 偷天换日：全员变为宿主外形
       const host = this.findActorById(this.state.mirrorUlt.hostId);
       if (host) {
         mimicOverrideId = actor.characterId;
@@ -2428,6 +2431,17 @@ export class ArenaGame {
         actor.characterId = host.characterId;
         actor.color = host.color;
         ctx.shadowColor = host.color;
+      }
+    } else if (actor.characterId === "mirror-mimic" && actor.state?.mimicTargetId) {
+      // 拟态窃取：幻镜自身变为目标外形
+      const mimicTarget = this.findActorById(actor.state.mimicTargetId);
+      if (mimicTarget) {
+        mimicOverrideId = actor.characterId;
+        mimicOverrideColor = actor.color;
+        actor.characterId = mimicTarget.characterId;
+        actor.color = mimicTarget.color;
+        ctx.shadowColor = mimicTarget.color;
+        showMimicRing = true;
       }
     }
 
@@ -2484,7 +2498,30 @@ export class ArenaGame {
         ctx.fill();
     }
 
-    // 偷天换日结束：恢复被临时覆盖的角色属性
+    // 拟态中：紫色脉冲标识环（在恢复属性前绘制，此时radius仍正确）
+    if (showMimicRing) {
+      const pulse = 0.5 + 0.5 * Math.sin((this.state?.elapsed ?? 0) * 5);
+      ctx.save();
+      ctx.strokeStyle = `rgba(180, 80, 255, ${0.65 + 0.35 * pulse})`;
+      ctx.lineWidth = 2.5;
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = "#b050ff";
+      ctx.beginPath();
+      ctx.arc(0, 0, radius + 5, 0, Math.PI * 2);
+      ctx.stroke();
+      // 三段旋转弧（强调"拟态"感）
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.55 + 0.3 * pulse;
+      for (let i = 0; i < 3; i++) {
+        const a = ((this.state?.elapsed ?? 0) * 2.8) + (i * Math.PI * 2) / 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius + 5, a, a + 0.55);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 变身结束：恢复被临时覆盖的角色属性
     if (mimicOverrideId !== null) {
       actor.characterId = mimicOverrideId;
       actor.color = mimicOverrideColor;
@@ -4286,98 +4323,25 @@ export class ArenaGame {
 
   renderMirrorMimicBall(ctx, actor, elapsed) {
     const r = actor.radius;
-    const mimicTarget = actor.state?.mimicTargetId ? this.findActorById(actor.state.mimicTargetId) : null;
-    const mimicColor = mimicTarget?.color ?? null;
 
-    // 镜面主体：水银质感渐变
-    const shell = ctx.createRadialGradient(-r * 0.32, -r * 0.36, 1, 0, 0, r);
+    // 纯白球体：干净的镜面白球，无拟态时的默认外形
+    const shell = ctx.createRadialGradient(-r * 0.3, -r * 0.34, 1, 0, 0, r);
     shell.addColorStop(0, "#ffffff");
-    shell.addColorStop(0.18, "#d8eef8");
-    shell.addColorStop(0.5, mimicColor ? `${mimicColor}99` : "#78c8f0");
-    shell.addColorStop(0.82, "#1c4060");
-    shell.addColorStop(1, "#050e18");
+    shell.addColorStop(0.45, "#e8e8e8");
+    shell.addColorStop(0.85, "#b0b0b8");
+    shell.addColorStop(1, "#606068");
     ctx.fillStyle = shell;
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.fill();
 
-    // 棱镜切面：旋转彩色扇形（镜面折射感）
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.9, 0, Math.PI * 2);
-    ctx.clip();
-    const shimmerColors = [
-      "rgba(180,230,255,0.14)", "rgba(255,200,240,0.10)",
-      "rgba(200,255,210,0.10)", "rgba(230,210,255,0.12)",
-    ];
-    ctx.rotate(elapsed * 1.1);
-    for (let i = 0; i < 8; i++) {
-      const a0 = (Math.PI * 2 * i) / 8;
-      const a1 = (Math.PI * 2 * (i + 0.72)) / 8;
-      ctx.fillStyle = shimmerColors[i % shimmerColors.length];
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.arc(0, 0, r, a0, a1);
-      ctx.closePath();
-      ctx.fill();
-    }
-    ctx.restore();
-
-    // 镜面亮斑
-    const hl = ctx.createRadialGradient(-r * 0.3, -r * 0.35, 0, -r * 0.3, -r * 0.35, r * 0.45);
-    hl.addColorStop(0, "rgba(255,255,255,0.85)");
+    // 高光亮斑
+    const hl = ctx.createRadialGradient(-r * 0.28, -r * 0.32, 0, -r * 0.28, -r * 0.32, r * 0.42);
+    hl.addColorStop(0, "rgba(255,255,255,0.9)");
     hl.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = hl;
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
-    ctx.fill();
-
-    // 内旋菱形框（镜面切割感）
-    ctx.save();
-    ctx.rotate(-elapsed * 0.6);
-    ctx.strokeStyle = "rgba(200, 235, 255, 0.55)";
-    ctx.lineWidth = 1.2;
-    const sq = r * 0.52;
-    ctx.beginPath();
-    ctx.moveTo(0, -sq); ctx.lineTo(sq, 0);
-    ctx.lineTo(0, sq); ctx.lineTo(-sq, 0);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.restore();
-
-    // 拟态中：目标颜色脉冲光环 + 旋转箭头符号
-    if (mimicColor) {
-      const pulse = 0.5 + 0.5 * Math.sin(elapsed * 5);
-      ctx.save();
-      ctx.strokeStyle = mimicColor;
-      ctx.lineWidth = 2.2;
-      ctx.globalAlpha = 0.45 + 0.4 * pulse;
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = mimicColor;
-      ctx.beginPath();
-      ctx.arc(0, 0, r + 4, 0, Math.PI * 2);
-      ctx.stroke();
-      // 快速旋转的短弧（"偷取"感）
-      ctx.globalAlpha = 0.7 + 0.3 * pulse;
-      ctx.lineWidth = 2.8;
-      for (let i = 0; i < 3; i++) {
-        const baseAngle = elapsed * 3.5 + (i * Math.PI * 2) / 3;
-        ctx.beginPath();
-        ctx.arc(0, 0, r + 4, baseAngle, baseAngle + 0.5);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    // 流动闪光点
-    const glintA = elapsed * 2.8;
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    ctx.beginPath();
-    ctx.arc(Math.cos(glintA) * r * 0.55, Math.sin(glintA) * r * 0.55, 1.6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "rgba(200,240,255,0.6)";
-    ctx.beginPath();
-    ctx.arc(Math.cos(glintA + 2.3) * r * 0.38, Math.sin(glintA + 2.3) * r * 0.38, 1.1, 0, Math.PI * 2);
     ctx.fill();
   }
 }

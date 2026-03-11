@@ -270,6 +270,30 @@ const basicAttackSounds = {
     o.start(t); o.stop(t + 0.33);
   },
 
+  // 风暴·气象台：气旋卷起 — 低频呼啸扫频
+  "storm-weather"() {
+    if (throttle("ba:storm-weather", 500)) return;
+    const c = getCtx(); const t = c.currentTime;
+    const master = getMaster(c);
+    const n = makeNoise(c, 0.55);
+    const bf = c.createBiquadFilter();
+    bf.type = "bandpass"; bf.frequency.value = 320; bf.Q.value = 1.2;
+    bf.frequency.exponentialRampToValueAtTime(680, t + 0.55);
+    const gn = gainNode(c, 0.0);
+    gn.gain.setValueAtTime(0.0, t);
+    gn.gain.linearRampToValueAtTime(0.45, t + 0.18);
+    gn.gain.exponentialRampToValueAtTime(0.001, t + 0.58);
+    n.connect(bf); bf.connect(gn); gn.connect(master);
+    const o = c.createOscillator();
+    o.type = "sine"; o.frequency.value = 140;
+    o.frequency.exponentialRampToValueAtTime(90, t + 0.55);
+    const go = gainNode(c, 0.18);
+    go.gain.setValueAtTime(0.18, t);
+    go.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+    o.connect(go); go.connect(master);
+    n.start(t); o.start(t); n.stop(t + 0.6); o.stop(t + 0.56);
+  },
+
   // 绝对零度：寒冰散射 — 冰晶碎裂
   "frost-core"() {
     if (throttle("ba:frost-core", 280)) return;
@@ -485,6 +509,39 @@ const ultimateSounds = {
   },
 
   // 寒冰连射：冰爆全屏
+  // 风暴·气象台：终极风暴 — 轰鸣共鸣 + 多层风啸
+  "storm-weather"() {
+    const c = getCtx(); const t = c.currentTime;
+    const master = getMaster(c);
+    // 低频轰鸣
+    const o1 = c.createOscillator();
+    o1.type = "sawtooth"; o1.frequency.value = 60;
+    o1.frequency.linearRampToValueAtTime(40, t + 0.7);
+    const g1 = gainNode(c, 0.28);
+    g1.gain.setValueAtTime(0.28, t);
+    g1.gain.exponentialRampToValueAtTime(0.001, t + 0.72);
+    o1.connect(g1); g1.connect(master); o1.start(t); o1.stop(t + 0.73);
+    // 宽频风啸噪声
+    const n = makeNoise(c, 0.65);
+    const lp = c.createBiquadFilter();
+    lp.type = "lowpass"; lp.frequency.value = 800;
+    lp.frequency.exponentialRampToValueAtTime(300, t + 0.65);
+    const gn = gainNode(c, 0.0);
+    gn.gain.setValueAtTime(0.0, t);
+    gn.gain.linearRampToValueAtTime(0.5, t + 0.08);
+    gn.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+    n.connect(lp); lp.connect(gn); gn.connect(master);
+    n.start(t); n.stop(t + 0.72);
+    // 高频呼啸扫频
+    const o2 = c.createOscillator();
+    o2.type = "sine"; o2.frequency.value = 480;
+    o2.frequency.exponentialRampToValueAtTime(220, t + 0.65);
+    const g2 = gainNode(c, 0.22);
+    g2.gain.setValueAtTime(0.22, t);
+    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
+    o2.connect(g2); g2.connect(master); o2.start(t); o2.stop(t + 0.66);
+  },
+
   "frost-core"() {
     const c = getCtx(); const t = c.currentTime;
     const master = getMaster(c);

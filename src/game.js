@@ -289,6 +289,7 @@ export class ArenaGame {
       beams: [],
       decoys: [],
       lasers: [],
+      tornadoes: [],
       scheduledActions: [],
       shake: { amplitude: 0, duration: 0, timeLeft: 0 },
       nextEssenceIn: 1.5,
@@ -360,6 +361,8 @@ export class ArenaGame {
         frostStacks: 0,
         frostStackTime: 0,
         frozenTime: 0,
+        capturedByTornadoId: null,
+        disarmedTime: 0,
       },
     };
 
@@ -489,6 +492,7 @@ export class ArenaGame {
     this.updateScheduledActions(dt);
     this.updateActors(dt);
     this.updateHolySwords(dt);
+    this.updateTornadoes(dt);
     this.updateLasers(dt);
     this.resolveActorCollisions();
     this.updateTrails(dt);
@@ -600,6 +604,7 @@ export class ArenaGame {
     actor.state.slowTime = Math.max(0, actor.state.slowTime - dt);
     actor.state.frostStackTime = Math.max(0, actor.state.frostStackTime - dt);
     actor.state.frozenTime = Math.max(0, actor.state.frozenTime - dt);
+    actor.state.disarmedTime = Math.max(0, actor.state.disarmedTime - dt);
 
     if (actor.state.forcedTargetTime <= 0) {
       actor.state.forcedTargetId = null;
@@ -689,6 +694,7 @@ export class ArenaGame {
 
   executeBasicAttack(actor, trigger, event) {
     if (actor.state.frozenTime > 0) return;
+    if (actor.state.disarmedTime > 0) return;
     actor.definition.basicAttack?.execute?.({
       actor,
       trigger,
@@ -786,6 +792,7 @@ export class ArenaGame {
       spawnDecoy: (config) => this.spawnDecoy(actor, config),
       activateDecoys: (config) => this.activateDecoys(actor, config),
       spawnLaser: (config) => this.spawnLaser(actor, config),
+      spawnTornado: (config) => this.spawnTornado(actor, config),
       applyFrost: (target, options) => this.applyFrostStack(actor, target, options),
       forceFreezeTarget: (target, duration) => {
         if (!target.alive) return;
@@ -1801,6 +1808,7 @@ export class ArenaGame {
     this.renderStrikes(ctx, state);
     this.renderTurrets(ctx, state);
     this.renderDecoys(ctx, state);
+    this.renderTornadoes(ctx, state);
     this.renderProjectiles(ctx, state);
     this.renderPulses(ctx, state);
     this.renderBeams(ctx, state);
@@ -2397,6 +2405,9 @@ export class ArenaGame {
         break;
       case "prism-refract":
         this.renderPrismBall(ctx, actor, elapsed);
+        break;
+      case "storm-weather":
+        this.renderWeatherBall(ctx, actor, elapsed);
         break;
       default:
         ctx.fillStyle = actor.color;
@@ -3696,6 +3707,210 @@ export class ArenaGame {
     ctx.fillStyle = "rgba(255,255,255,0.22)";
     ctx.beginPath();
     ctx.arc(-radius * 0.3, -radius * 0.34, radius * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ─── 风暴·气象台 ──────────────────────────────────────────────────────────
+
+  spawnTornado(owner, config) {
+    const dir = config.direction ?? randomUnit();
+    const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y);
+    const normDir = len > 0.001 ? { x: dir.x / len, y: dir.y / len } : randomUnit();
+    this.state.tornadoes.push({
+      id: Math.random().toString(16).slice(2, 10),
+      ownerId: owner.id,
+      position: { ...owner.position },
+      velocity: scale(normDir, config.speed),
+      radius: config.radius,
+      damage: config.damage,
+      tickInterval: config.tickInterval ?? 0.5,
+      tickTimer: 0,
+      lifetime: config.lifetime,
+      age: 0,
+      disarm: config.disarm ?? false,
+      capturedActorIds: new Set(),
+    });
+  }
+
+  updateTornadoes(dt) {
+    for (const tornado of this.state.tornadoes) {
+      tornado.age += dt;
+
+      // 移动并反弹
+      tornado.position.x += tornado.velocity.x * dt;
+      tornado.position.y += tornado.velocity.y * dt;
+      this.resolveArenaCollision(tornado);
+
+      // 伤害计时
+      tornado.tickTimer += dt;
+      const doDamage = tornado.tickTimer >= tornado.tickInterval;
+      if (doDamage) tornado.tickTimer -= tornado.tickInterval;
+
+      const owner = this.state.actors.find((a) => a.id === tornado.ownerId && a.alive);
+
+      for (const actor of this.state.actors) {
+        if (!actor.alive || actor.id === tornado.ownerId) continue;
+
+        // 清理已死亡的被捕获者
+        if (!actor.alive && tornado.capturedActorIds.has(actor.id)) {
+          tornado.capturedActorIds.delete(actor.id);
+          actor.state.capturedByTornadoId = null;
+          continue;
+        }
+
+        const dist = distance(actor.position, tornado.position);
+        const inRange = dist < tornado.radius + actor.radius * 0.5;
+
+        // 新捕获（未被其他龙卷风捕获时）
+        if (!actor.state.capturedByTornadoId && inRange) {
+          tornado.capturedActorIds.add(actor.id);
+          actor.state.capturedByTornadoId = tornado.id;
+        }
+
+        if (tornado.capturedActorIds.has(actor.id)) {
+          // 跟随龙卷风
+          actor.position = { ...tornado.position };
+          actor.velocity = { ...tornado.velocity };
+
+          // 缴械效果
+          if (tornado.disarm) {
+            actor.state.disarmedTime = 0.15;
+          }
+
+          // 定时伤害
+          if (doDamage && owner) {
+            this.applyDamage(actor, tornado.damage, { attacker: owner, color: "#a8d8f8" });
+          }
+        }
+      }
+    }
+
+    // 移除到期的龙卷风，释放被捕获者
+    this.state.tornadoes = this.state.tornadoes.filter((tornado) => {
+      if (tornado.age < tornado.lifetime) return true;
+      for (const actorId of tornado.capturedActorIds) {
+        const actor = this.state.actors.find((a) => a.id === actorId);
+        if (actor && actor.alive) {
+          actor.state.capturedByTornadoId = null;
+          const spd = Math.sqrt(tornado.velocity.x ** 2 + tornado.velocity.y ** 2);
+          actor.velocity = scale(randomUnit(), spd * 1.3);
+        }
+      }
+      return false;
+    });
+  }
+
+  renderTornadoes(ctx, state) {
+    for (const tornado of state.tornadoes) {
+      const { position, radius, age, lifetime, disarm } = tornado;
+      const spin = state.elapsed * 4.0;
+      const fadeIn = Math.min(1, age / 0.25);
+      const fadeOut = Math.min(1, (lifetime - age) / 0.4);
+      const alpha = fadeIn * fadeOut;
+      if (alpha <= 0) continue;
+
+      ctx.save();
+      ctx.translate(position.x, position.y);
+
+      // 外发光
+      const baseRgb = disarm ? "160,190,255" : "170,215,245";
+      const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, radius * 1.3);
+      glow.addColorStop(0, `rgba(${baseRgb},${alpha * 0.45})`);
+      glow.addColorStop(1, `rgba(${baseRgb},0)`);
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius * 1.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 旋转螺旋臂
+      const armCount = 6;
+      for (let i = 0; i < armCount; i++) {
+        const baseAngle = spin + (i / armCount) * Math.PI * 2;
+        ctx.strokeStyle = `rgba(${baseRgb},${alpha * 0.65})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        const steps = 18;
+        for (let s = 0; s <= steps; s++) {
+          const t = s / steps;
+          const a = baseAngle + t * Math.PI * 1.6;
+          const r = t * radius;
+          const x = Math.cos(a) * r;
+          const y = Math.sin(a) * r;
+          if (s === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+
+      // 外圈轮廓
+      ctx.strokeStyle = `rgba(${baseRgb},${alpha * 0.85})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // 缴械标志：橙黄虚线圈
+      if (disarm) {
+        ctx.strokeStyle = `rgba(255,210,80,${alpha * 0.7})`;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.lineDashOffset = -state.elapsed * 24;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius + 7, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      ctx.restore();
+    }
+  }
+
+  renderWeatherBall(ctx, actor, elapsed) {
+    const r = actor.radius;
+    const spin = elapsed * 1.5;
+
+    // 底色渐变：暗蓝灰到深蓝
+    const g = ctx.createRadialGradient(-r * 0.28, -r * 0.3, r * 0.05, 0, 0, r);
+    g.addColorStop(0, "#aacfe0");
+    g.addColorStop(0.55, "#6b9ab5");
+    g.addColorStop(1, "#2f4f60");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 旋转云层条纹（裁剪到圆内）
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, 0, r - 0.5, 0, Math.PI * 2);
+    ctx.clip();
+    for (let i = 0; i < 4; i++) {
+      const a = spin + (i / 4) * Math.PI * 2;
+      const cx = Math.cos(a + 0.7) * r * 0.55;
+      const cy = Math.sin(a + 0.7) * r * 0.55;
+      ctx.strokeStyle = "rgba(210,240,255,0.28)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 0.1, Math.sin(a) * r * 0.1);
+      ctx.quadraticCurveTo(cx, cy, Math.cos(a + 1.4) * r * 0.88, Math.sin(a + 1.4) * r * 0.88);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 中心小旋涡
+    ctx.save();
+    ctx.rotate(spin * 2.2);
+    ctx.strokeStyle = "rgba(180,225,255,0.55)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.28, 0.2, Math.PI * 1.7);
+    ctx.stroke();
+    ctx.restore();
+
+    // 高光
+    ctx.fillStyle = "rgba(255,255,255,0.16)";
+    ctx.beginPath();
+    ctx.arc(-r * 0.3, -r * 0.32, r * 0.24, 0, Math.PI * 2);
     ctx.fill();
   }
 }

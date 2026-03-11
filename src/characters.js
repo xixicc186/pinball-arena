@@ -1301,6 +1301,101 @@ export const CHARACTER_LIBRARY = [
       },
     },
   }),
+
+  // ─── 风暴·气象台 ──────────────────────────────────────────────────────────
+  defineCharacter({
+    id: "storm-weather",
+    name: "风暴",
+    title: "气象台",
+    color: "#7ea4b8",
+    description: "全场搅局者。发射随机游荡的气旋捕获并折磨敌人；终极风暴同时释放三个巨型龙卷风，缴械所有被卷入者。",
+    stats: {
+      maxHp: 100,
+      speed: 180,
+      maxEssence: 3,
+      attackRange: 600,
+      radius: 18,
+    },
+    tuning: {
+      basic: {
+        radiusFactor: 1.0,
+        speedFactor: 0.5,
+        damage: 2,
+        lifetime: 3,
+      },
+      ult: {
+        count: 3,
+        radiusFactor: 1.5,
+        speedFactor: 1.0,
+        damage: 4,
+        lifetime: 5,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "平A · 微型气旋",
+        fields: [
+          editableField("basicAttack.triggers.0.interval", "发射间隔", { min: 0.5, step: 0.5, unit: "s" }),
+          editableField("tuning.basic.radiusFactor", "气旋半径倍数", { min: 0.3, max: 4, step: 0.1 }),
+          editableField("tuning.basic.speedFactor", "速度系数（×自身速度）", { min: 0.1, max: 2, step: 0.05 }),
+          editableField("tuning.basic.damage", "每跳伤害", { min: 1, step: 1 }),
+          editableField("tuning.basic.lifetime", "持续时间", { min: 0.5, max: 10, step: 0.5, unit: "s" }),
+        ],
+      },
+      {
+        title: "大招 · 终极风暴",
+        fields: [
+          editableField("tuning.ult.count", "龙卷风数量", { min: 1, max: 6, step: 1 }),
+          editableField("tuning.ult.radiusFactor", "体型倍数（×自身半径）", { min: 0.5, max: 4, step: 0.1 }),
+          editableField("tuning.ult.speedFactor", "速度系数（×自身速度）", { min: 0.1, max: 3, step: 0.1 }),
+          editableField("tuning.ult.damage", "每跳伤害", { min: 1, step: 1 }),
+          editableField("tuning.ult.lifetime", "持续时间", { min: 1, max: 12, step: 0.5, unit: "s" }),
+        ],
+      },
+    ],
+    basicAttack: {
+      name: "微型气旋",
+      triggers: [{ type: "interval", interval: 4 }],
+      execute({ actor, api }) {
+        const t = actor.definition.tuning.basic;
+        const angle = Math.random() * Math.PI * 2;
+        api.spawnTornado({
+          radius: actor.baseRadius * t.radiusFactor,
+          speed: actor.stats.speed * t.speedFactor,
+          damage: t.damage,
+          lifetime: t.lifetime,
+          disarm: false,
+          direction: { x: Math.cos(angle), y: Math.sin(angle) },
+        });
+      },
+    },
+    ultimate: {
+      name: "终极风暴",
+      execute({ actor, api }) {
+        const t = actor.definition.tuning.ult;
+        const baseAngle = Math.random() * Math.PI * 2;
+        for (let i = 0; i < t.count; i++) {
+          const angle = baseAngle + (i / t.count) * Math.PI * 2;
+          api.spawnTornado({
+            radius: actor.baseRadius * t.radiusFactor,
+            speed: actor.stats.speed * t.speedFactor,
+            damage: t.damage,
+            lifetime: t.lifetime,
+            disarm: true,
+            direction: { x: Math.cos(angle), y: Math.sin(angle) },
+          });
+        }
+      },
+    },
+  }),
 ];
 
 const CHARACTER_DEFAULTS = Object.fromEntries(

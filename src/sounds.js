@@ -130,8 +130,8 @@ const basicAttackSounds = {
     const lfo = osc(c, "sine", 9);
     const lg = gainNode(c, 130);
     lfo.connect(lg); lg.connect(f.frequency);
-    const g = gainNode(c, 0.33);
-    g.gain.setValueAtTime(0.33, t);
+    const g = gainNode(c, 0.75);
+    g.gain.setValueAtTime(0.75, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
     n.connect(f); f.connect(g); g.connect(getMaster(c));
     lfo.start(t); n.start(t); n.stop(t + 0.22); lfo.stop(t + 0.22);
@@ -577,6 +577,63 @@ function playBombExplosion() {
   o.start(t); o.stop(t + 0.26);
 }
 
+// ─── 炮台部署音效 ──────────────────────────────────────────────────────────────
+
+function playTurretPlace() {
+  const c = getCtx(); const t = c.currentTime;
+  const master = getMaster(c);
+  // 金属落地闷响
+  const n = makeNoise(c, 0.07);
+  const f = c.createBiquadFilter();
+  f.type = "bandpass"; f.frequency.value = 520; f.Q.value = 3.5;
+  const g = gainNode(c, 0.9);
+  g.gain.setValueAtTime(0.9, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+  n.connect(f); f.connect(g); g.connect(master);
+  n.start(t); n.stop(t + 0.08);
+  // 机械锁定滴声（短促高频正弦）
+  const o = osc(c, "sine", 1400);
+  o.frequency.linearRampToValueAtTime(1100, t + 0.06);
+  const go = gainNode(c, 0.5);
+  go.gain.setValueAtTime(0.5, t);
+  go.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+  o.connect(go); go.connect(master);
+  o.start(t); o.stop(t + 0.1);
+}
+
+// ─── 冻结音效 ──────────────────────────────────────────────────────────────────
+
+function playFreeze() {
+  const c = getCtx(); const t = c.currentTime;
+  const master = getMaster(c);
+  // 冰晶炸裂噪声（高频）
+  const n = makeNoise(c, 0.22);
+  const f = c.createBiquadFilter();
+  f.type = "highpass"; f.frequency.value = 3500;
+  const g = gainNode(c, 0.85);
+  g.gain.setValueAtTime(0.85, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+  n.connect(f); f.connect(g); g.connect(master);
+  n.start(t); n.stop(t + 0.23);
+  // 冰封音调下降（玻璃音色）
+  const o = osc(c, "sine", 1800);
+  o.frequency.exponentialRampToValueAtTime(420, t + 0.28);
+  const go = gainNode(c, 0.7);
+  go.gain.setValueAtTime(0.7, t);
+  go.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+  o.connect(go); go.connect(master);
+  o.start(t); o.stop(t + 0.31);
+  // 短促冰击（中频）
+  const n2 = makeNoise(c, 0.06);
+  const f2 = c.createBiquadFilter();
+  f2.type = "bandpass"; f2.frequency.value = 1200; f2.Q.value = 2;
+  const g2 = gainNode(c, 0.65);
+  g2.gain.setValueAtTime(0.65, t);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+  n2.connect(f2); f2.connect(g2); g2.connect(master);
+  n2.start(t); n2.stop(t + 0.07);
+}
+
 // ─── 对外统一接口 ──────────────────────────────────────────────────────────────
 
 export function playSound({ type, characterId, impactSpeed, strikeType }) {
@@ -590,6 +647,10 @@ export function playSound({ type, characterId, impactSpeed, strikeType }) {
       basicAttackSounds[characterId]?.();
     } else if (type === "ultimate") {
       ultimateSounds[characterId]?.();
+    } else if (type === "turretPlace") {
+      playTurretPlace();
+    } else if (type === "freeze") {
+      playFreeze();
     } else if (type === "strikeExplode") {
       if (strikeType === "lightning") {
         playLightningImpact();

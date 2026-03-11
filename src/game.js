@@ -1283,6 +1283,7 @@ export class ArenaGame {
     };
 
     this.state.turrets.push(turret);
+    this.callbacks.onSound?.({ type: "turretPlace" });
     this.spawnDamageText({
       text: "炮台",
       position: turret.position,
@@ -2914,6 +2915,7 @@ export class ArenaGame {
         size: 16,
       });
       this.shake(8, 0.14);
+      this.callbacks.onSound?.({ type: "freeze" });
     }
   }
 

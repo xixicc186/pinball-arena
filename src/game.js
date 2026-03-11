@@ -90,6 +90,27 @@ function getActorInverseMass(actor, anchored) {
   return 1 / getActorMass(actor);
 }
 
+function normalizeCompetitor(entry) {
+  if (typeof entry === "string") {
+    return {
+      characterId: entry,
+      teamId: null,
+      teamLabel: null,
+    };
+  }
+
+  const characterId = entry?.characterId ?? entry?.id ?? null;
+  if (!characterId) {
+    return null;
+  }
+
+  return {
+    characterId,
+    teamId: entry.teamId ?? null,
+    teamLabel: entry.teamLabel ?? null,
+  };
+}
+
 function randomBetween(min, max) {
   return min + Math.random() * (max - min);
 }
@@ -249,15 +270,20 @@ export class ArenaGame {
   }
 
   start(selectedCharacterId, rosterIds = null, options = {}) {
-    const chosenIds = Array.isArray(rosterIds) && rosterIds.length
-      ? [...new Set(rosterIds)]
-      : CHARACTER_LIBRARY.map((character) => character.id);
-    const roster = chosenIds
-      .map((id) => getCharacterById(id))
+    const competitors = (Array.isArray(rosterIds) && rosterIds.length
+      ? rosterIds
+      : CHARACTER_LIBRARY.map((character) => character.id))
+      .map((entry) => normalizeCompetitor(entry))
       .filter(Boolean);
-    const selected = roster.find((character) => character.id === selectedCharacterId)
+    const roster = competitors
+      .map((entry) => ({
+        ...entry,
+        character: getCharacterById(entry.characterId),
+      }))
+      .filter((entry) => entry.character);
+    const selected = roster.find((entry) => entry.character.id === selectedCharacterId)?.character
       ?? getCharacterById(selectedCharacterId)
-      ?? roster[0]
+      ?? roster[0]?.character
       ?? CHARACTER_LIBRARY[0];
 
     if (!roster.length) {
@@ -269,6 +295,7 @@ export class ArenaGame {
       duelTriggered: false,
       matchOver: false,
       winnerId: null,
+      winnerTeamId: null,
       selectedId: selected.id,
       settings: {
         includeEdgeHazards: options.includeEdgeHazards ?? true,
@@ -300,8 +327,10 @@ export class ArenaGame {
       finishOrder: [],
     };
 
-    roster.forEach((character, index) => {
-      this.state.actors.push(this.spawnActor(character, index, character.id === selected.id));
+    roster.forEach((entry, index) => {
+      this.state.actors.push(
+        this.spawnActor(entry.character, index, entry.character.id === selected.id, entry),
+      );
     });
 
     this.callbacks.onMatchStart?.(this.snapshot());
@@ -318,7 +347,7 @@ export class ArenaGame {
     cancelAnimationFrame(this.rafId);
   }
 
-  spawnActor(character, index, isPlayer) {
+  spawnActor(character, index, isPlayer, competitor = {}) {
     const definition = instantiateCharacter(character);
     const radius = (definition.stats.radius ?? 18) * GAME_SCALE;
     const position = this.sampleFreePoint(radius + 8);
@@ -333,6 +362,8 @@ export class ArenaGame {
       color: definition.color,
       description: definition.description,
       isPlayer,
+      teamId: competitor.teamId ?? null,
+      teamLabel: competitor.teamLabel ?? null,
       definition,
       position,
       velocity: scale(direction, baseSpeed),
@@ -433,6 +464,7 @@ export class ArenaGame {
       duelTriggered: this.state.duelTriggered,
       matchOver: this.state.matchOver,
       winnerId: this.state.winnerId,
+      winnerTeamId: this.state.winnerTeamId,
       selectedId: this.state.selectedId,
       duelTime: this.state.settings.duelTime,
       nextPhaseIn: Math.max(0, this.state.settings.duelTime - this.state.elapsed),
@@ -448,6 +480,8 @@ export class ArenaGame {
         maxEssence: actor.stats.maxEssence,
         alive: actor.alive,
         isPlayer: actor.isPlayer,
+        teamId: actor.teamId,
+        teamLabel: actor.teamLabel,
       })),
     };
   }
@@ -1089,7 +1123,11 @@ export class ArenaGame {
       }
 
       for (const actor of this.state.actors) {
-        if (!actor.alive || actor.id === projectile.ownerId || projectile.hitIds.has(actor.id)) {
+        if (
+          !actor.alive
+          || !this.isActorHostileToOwnerId(actor, projectile.ownerId)
+          || projectile.hitIds.has(actor.id)
+        ) {
           continue;
         }
         if (distance(actor.position, projectile.position) > actor.radius + projectile.radius) {
@@ -1193,7 +1231,7 @@ export class ArenaGame {
       }
 
       for (const actor of this.state.actors) {
-        if (!actor.alive || actor.id === trail.ownerId) {
+        if (!actor.alive || !this.isActorHostileToOwnerId(actor, trail.ownerId)) {
           continue;
         }
         if (distance(actor.position, trail.position) > actor.radius + trail.radius) {
@@ -1375,7 +1413,7 @@ export class ArenaGame {
   resolveTurretCollisions() {
     for (const turret of this.state.turrets) {
       for (const actor of this.state.actors) {
-        if (!actor.alive || actor.id === turret.ownerId) {
+        if (!actor.alive || !this.isActorHostileToOwnerId(actor, turret.ownerId)) {
           continue;
         }
         const delta = subtract(actor.position, turret.position);
@@ -1481,7 +1519,7 @@ export class ArenaGame {
 
     const owner = this.findActorById(strike.ownerId);
     for (const actor of this.state.actors) {
-      if (!actor.alive || actor.id === strike.ownerId) {
+      if (!actor.alive || !this.isActorHostileToOwnerId(actor, strike.ownerId)) {
         continue;
       }
       if (distance(actor.position, strike.position) > actor.radius + strike.radius) {
@@ -1576,7 +1614,7 @@ export class ArenaGame {
     let nearest = null;
     let bestDistance = range;
     for (const actor of this.state.actors) {
-      if (!actor.alive || actor.id === ownerId) {
+      if (!actor.alive || !this.isActorHostileToOwnerId(actor, ownerId)) {
         continue;
       }
       const currentDistance = distance(point, actor.position);
@@ -1690,7 +1728,14 @@ export class ArenaGame {
     }
     target.alive = false;
     target.hp = 0;
-    this.state.deathOrder.push({ id: target.id, characterId: target.characterId, name: target.name, color: target.color });
+    this.state.deathOrder.push({
+      id: target.id,
+      characterId: target.characterId,
+      name: target.name,
+      color: target.color,
+      teamId: target.teamId,
+      teamLabel: target.teamLabel,
+    });
     this.announce(
       attacker ? `${target.name} 被 ${attacker.name} 处决。` : `${target.name} 被淘汰。`,
     );
@@ -1739,6 +1784,33 @@ export class ArenaGame {
     return this.state.actors.find((actor) => actor.id === id);
   }
 
+  isSameTeam(left, right) {
+    if (!left || !right) {
+      return false;
+    }
+    return left.teamId != null && right.teamId != null && left.teamId === right.teamId;
+  }
+
+  isHostile(left, right) {
+    if (!left || !right || left.id === right.id) {
+      return false;
+    }
+    return !this.isSameTeam(left, right);
+  }
+
+  isActorHostileToOwnerId(actor, ownerId) {
+    if (!actor || !ownerId) {
+      return false;
+    }
+
+    const owner = this.findActorById(ownerId);
+    if (!owner) {
+      return actor.id !== ownerId;
+    }
+
+    return this.isHostile(owner, actor);
+  }
+
   findNearestEnemy(actor, range = Infinity) {
     let nearest = null;
     let bestDistance = range;
@@ -1769,7 +1841,7 @@ export class ArenaGame {
   }
 
   getEnemies(actor) {
-    return this.state.actors.filter((entry) => entry.id !== actor.id);
+    return this.state.actors.filter((entry) => this.isHostile(actor, entry));
   }
 
   shake(amplitude, duration) {
@@ -1794,22 +1866,41 @@ export class ArenaGame {
       return;
     }
     const alive = this.state.actors.filter((actor) => actor.alive);
-    if (alive.length > 1) {
+    const usingTeams = this.state.actors.some((actor) => actor.teamId != null);
+    const aliveTeams = [...new Set(alive.map((actor) => actor.teamId).filter((teamId) => teamId != null))];
+    if ((!usingTeams && alive.length > 1) || (usingTeams && aliveTeams.length > 1)) {
       return;
     }
 
     this.state.matchOver = true;
     this.state.winnerId = alive[0]?.id ?? null;
+    this.state.winnerTeamId = alive[0]?.teamId ?? null;
 
     // Build finish order: winner first, then deaths in reverse (last-dead = 2nd)
     const reversedDeaths = [...this.state.deathOrder].reverse();
+    if (!alive[0] && usingTeams && reversedDeaths.length) {
+      this.state.winnerTeamId = reversedDeaths[0].teamId ?? null;
+    }
+
     if (alive[0]) {
       this.state.finishOrder = [
-        { id: alive[0].id, characterId: alive[0].characterId, name: alive[0].name, color: alive[0].color },
+        {
+          id: alive[0].id,
+          characterId: alive[0].characterId,
+          name: alive[0].name,
+          color: alive[0].color,
+          teamId: alive[0].teamId,
+          teamLabel: alive[0].teamLabel,
+        },
         ...reversedDeaths,
       ];
       alive[0].highlightTime = 999;
       this.announce(`${alive[0].name} 获胜。`);
+    } else if (this.state.winnerTeamId != null) {
+      this.state.finishOrder = reversedDeaths;
+      const winnerLabel = this.state.actors.find((actor) => actor.teamId === this.state.winnerTeamId)?.teamLabel
+        ?? `队伍 ${this.state.winnerTeamId}`;
+      this.announce(`${winnerLabel} 晋级。`);
     } else {
       this.state.finishOrder = reversedDeaths;
       this.announce("所有角色同时出局，本局无胜者。");
@@ -2906,7 +2997,7 @@ export class ArenaGame {
   resolveDecoyCollisions() {
     for (const decoy of this.state.decoys) {
       for (const actor of this.state.actors) {
-        if (!actor.alive || actor.id === decoy.ownerId) continue;
+        if (!actor.alive || !this.isActorHostileToOwnerId(actor, decoy.ownerId)) continue;
         const delta = subtract(actor.position, decoy.position);
         const gap = length(delta);
         const minGap = actor.radius + decoy.radius;
@@ -2949,7 +3040,7 @@ export class ArenaGame {
       lineWidth: 5,
     });
     for (const actor of this.state.actors) {
-      if (!actor.alive || actor.id === decoy.ownerId) continue;
+      if (!actor.alive || !this.isActorHostileToOwnerId(actor, decoy.ownerId)) continue;
       if (distance(actor.position, decoy.position) > actor.radius + decoy.explodeRadius) continue;
       this.applyDamage(actor, decoy.explodeDamage, { type: "skill", color: decoy.color, attacker: owner });
     }
@@ -3466,7 +3557,7 @@ export class ArenaGame {
   applyLaserDamage(actor, laser) {
     const LASER_HALF = laser.width / 2 + 2;
     for (const enemy of this.state.actors) {
-      if (!enemy.alive || enemy.id === actor.id) continue;
+      if (!enemy.alive || !this.isHostile(actor, enemy)) continue;
       if (laser.hitEnemies.has(enemy.id)) continue;
       for (const seg of laser.segments) {
         const dist = distanceToSegment(enemy.position, seg.start, seg.end);
@@ -3690,7 +3781,7 @@ export class ArenaGame {
       const swordDamage = actor.definition.tuning.ultimate.swordDamage;
 
       for (const enemy of this.state.actors) {
-        if (!enemy.alive || enemy.id === actor.id) continue;
+        if (!enemy.alive || !this.isHostile(actor, enemy)) continue;
         if ((actor.state.swordDamageCooldowns.get(enemy.id) ?? 0) > 0) continue;
         const dist = distanceToSegment(enemy.position, swordBase, tip);
         if (dist < enemy.radius + SWORD_HIT_THICKNESS) {
@@ -3984,7 +4075,7 @@ export class ArenaGame {
       const owner = this.state.actors.find((a) => a.id === tornado.ownerId && a.alive);
 
       for (const actor of this.state.actors) {
-        if (!actor.alive || actor.id === tornado.ownerId) continue;
+        if (!actor.alive || !this.isActorHostileToOwnerId(actor, tornado.ownerId)) continue;
 
         // 清理已死亡的被捕获者
         if (!actor.alive && tornado.capturedActorIds.has(actor.id)) {

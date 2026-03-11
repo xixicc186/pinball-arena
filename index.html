@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>弹球角斗场</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260312a" />
   </head>
   <body>
     <div class="shell">
@@ -59,29 +59,77 @@
         </section>
 
         <section class="panel toolbar-panel">
-          <div class="toolbar-row">
-            <button id="record-button" class="secondary-button" type="button">录制对局</button>
-            <button id="start-button" class="primary-button" type="button">开始出战</button>
+          <div class="mode-tabs" role="tablist" aria-label="玩法切换">
+            <button
+              id="mode-classic-button"
+              class="mode-tab active"
+              type="button"
+              role="tab"
+              aria-selected="true"
+            >
+              自由混战
+            </button>
+            <button
+              id="mode-tournament-button"
+              class="mode-tab"
+              type="button"
+              role="tab"
+              aria-selected="false"
+            >
+              赛事玩法
+            </button>
+          </div>
 
-            <label class="toolbar-toggle">
-              <input id="edge-spikes-toggle" type="checkbox" checked />
-              <span>随机一侧生成边缘尖刺</span>
-            </label>
+          <div id="classic-mode-panel" class="mode-panel active">
+            <div class="toolbar-row">
+              <button id="record-button" class="secondary-button" type="button">录制对局</button>
+              <button id="start-button" class="primary-button" type="button">开始出战</button>
 
-            <label class="toolbar-setting">
-              <span class="setting-label">进入下一阶段时间</span>
-              <span class="setting-control">
-                <input id="duel-time-input" type="number" min="5" step="1" value="45" />
-                <span class="setting-unit">秒</span>
+              <label class="toolbar-toggle">
+                <input id="edge-spikes-toggle" type="checkbox" checked />
+                <span>随机一侧生成边缘尖刺</span>
+              </label>
+
+              <label class="toolbar-setting">
+                <span class="setting-label">进入下一阶段时间</span>
+                <span class="setting-control">
+                  <input id="duel-time-input" type="number" min="5" step="1" value="45" />
+                  <span class="setting-unit">秒</span>
+                </span>
+              </label>
+
+              <button id="open-roster-button" class="secondary-button" type="button">角色选择与编辑</button>
+            </div>
+
+            <div class="toolbar-meta">
+              <span id="roster-status" class="roster-status">已选择 0 名出战角色</span>
+            </div>
+          </div>
+
+          <div id="tournament-mode-panel" class="mode-panel hidden">
+            <div class="toolbar-row tournament-toolbar-row">
+              <button id="tournament-record-button" class="secondary-button" type="button">录制整届赛事</button>
+              <button id="tournament-start-button" class="primary-button" type="button">开始赛事</button>
+              <button id="tournament-draw-button" class="secondary-button" type="button">随机抽签分组</button>
+              <button id="open-roster-button-tournament" class="secondary-button" type="button">角色选择与编辑</button>
+            </div>
+
+            <div class="toolbar-meta tournament-meta">
+              <span id="tournament-status" class="roster-status">赛事模式需要恰好 16 名出战角色。</span>
+              <span id="tournament-summary" class="tournament-summary">
+                随机分成 8 组，每组 2 人，依次进行 8 进 4、4 进 2 和决胜组对决。
               </span>
-            </label>
-
-            <button id="open-roster-button" class="secondary-button" type="button">角色选择与编辑</button>
+            </div>
           </div>
+        </section>
 
-          <div class="toolbar-meta">
-            <span id="roster-status" class="roster-status">已选择 0 名出战角色</span>
+        <section id="tournament-panel" class="panel tournament-panel hidden" aria-label="赛事赛程">
+          <div class="panel-head">
+            <h2>赛事赛程图</h2>
+            <span id="tournament-round-indicator" class="tournament-round-indicator">等待抽签</span>
           </div>
+          <div id="tournament-groups" class="tournament-groups"></div>
+          <div id="tournament-bracket" class="tournament-bracket"></div>
         </section>
       </main>
     </div>
@@ -116,6 +164,6 @@
       </section>
     </div>
 
-<script type="module" src="./src/main.js?v=20260311"></script>
+    <script type="module" src="./src/main.js?v=20260312a"></script>
   </body>
 </html>

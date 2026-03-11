@@ -15,6 +15,20 @@ const modalRosterStatusElement = document.getElementById("modal-roster-status");
 const editorElement = document.getElementById("character-editor");
 const startButton = document.getElementById("start-button");
 const recordButton = document.getElementById("record-button");
+const modeClassicButton = document.getElementById("mode-classic-button");
+const modeTournamentButton = document.getElementById("mode-tournament-button");
+const classicModePanel = document.getElementById("classic-mode-panel");
+const tournamentModePanel = document.getElementById("tournament-mode-panel");
+const tournamentPanel = document.getElementById("tournament-panel");
+const tournamentDrawButton = document.getElementById("tournament-draw-button");
+const tournamentStartButton = document.getElementById("tournament-start-button");
+const tournamentRecordButton = document.getElementById("tournament-record-button");
+const openRosterButtonTournament = document.getElementById("open-roster-button-tournament");
+const tournamentStatusElement = document.getElementById("tournament-status");
+const tournamentSummaryElement = document.getElementById("tournament-summary");
+const tournamentRoundIndicator = document.getElementById("tournament-round-indicator");
+const tournamentGroupsElement = document.getElementById("tournament-groups");
+const tournamentBracketElement = document.getElementById("tournament-bracket");
 const resetButton = document.getElementById("reset-button");
 const selectAllButton = document.getElementById("select-all-button");
 const clearRosterButton = document.getElementById("clear-roster-button");
@@ -39,12 +53,34 @@ const RECORDING_END_HOLD_MS = 2500;
 const ENTRY_CARD_STAGGER_MS = 200;
 const ENTRY_HOLD_MS = 1800;
 const ENTRY_OUTRO_MS = 1100;
+const TOURNAMENT_REQUIRED_ROSTER = 16;
+const TOURNAMENT_DRAW_MS = 3200;
+const TOURNAMENT_BRACKET_HOLD_MS = 1800;
+const TOURNAMENT_MATCH_OVERLAY_MS = 1600;
+const TOURNAMENT_PROMOTION_MS = 1200;
+const TOURNAMENT_RESULT_BRACKET_MS = TOURNAMENT_BRACKET_HOLD_MS + 2000;
+const TOURNAMENT_CHAMPION_HOLD_MS = 2600;
 
 let selectedId = CHARACTER_LIBRARY[0].id;
 let selectedRosterIds = new Set();
+let appMode = "classic";
 const matchSettings = {
   includeEdgeHazards: true,
   duelTime: DEFAULT_DUEL_TIME,
+};
+const tournamentState = {
+  groups: [],
+  rounds: [],
+  active: false,
+  currentMatchId: null,
+  currentRoundLabel: "",
+  championGroupId: null,
+  generated: false,
+  pendingResolve: null,
+  pendingReject: null,
+  cancelled: false,
+  sceneStopper: null,
+  latestResult: null,
 };
 const recordingState = {
   active: false,
@@ -90,6 +126,37 @@ function sanitizeDuelTime(value) {
   return Math.max(5, Math.min(180, Math.round(value || DEFAULT_DUEL_TIME)));
 }
 
+function shuffle(array) {
+  const result = [...array];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
+  }
+  return result;
+}
+
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function getSelectedCharacters() {
+  return getRosterIds()
+    .map((id) => getCharacterById(id))
+    .filter(Boolean);
+}
+
+function canStartTournament() {
+  return getRosterIds().length === TOURNAMENT_REQUIRED_ROSTER;
+}
+
+function getCurrentRecordButton() {
+  return appMode === "tournament" ? tournamentRecordButton : recordButton;
+}
+
+function getCurrentStartButton() {
+  return appMode === "tournament" ? tournamentStartButton : startButton;
+}
+
 function pushFeed(stamp, message) {
   battleFeedItems.unshift({ stamp, message });
   if (battleFeedItems.length > 3) {
@@ -129,27 +196,41 @@ function syncRosterSelection() {
 }
 
 function canStartMatch() {
-  return getRosterIds().length >= 2;
+  return appMode === "tournament" ? canStartTournament() : getRosterIds().length >= 2;
 }
 
 function updateRosterStatus() {
+  const activeStartButton = getCurrentStartButton();
   const selectedCount = getRosterIds().length;
-  const text = selectedCount >= 2
+  const classicText = selectedCount >= 2
     ? `已选择 ${selectedCount} 名出战角色`
     : `已选择 ${selectedCount} 名出战角色，至少需要 2 名才能开始`;
+  const tournamentText = selectedCount === TOURNAMENT_REQUIRED_ROSTER
+    ? `已选择 ${selectedCount} 名出战角色，已满足赛事模式人数要求`
+    : `已选择 ${selectedCount} 名出战角色，赛事模式需要恰好 ${TOURNAMENT_REQUIRED_ROSTER} 名`;
 
-  rosterStatusElement.textContent = text;
+  rosterStatusElement.textContent = classicText;
+  tournamentStatusElement.textContent = tournamentText;
   modalRosterStatusElement.textContent =
-    `${text}。点击卡片切换编辑对象，标记为”出战”的角色将全部参与对战。`;
+    `${appMode === "tournament" ? tournamentText : classicText}。点击卡片切换编辑对象，标记为“出战”的角色将参与当前玩法。`;
 
   if (entryState.active) {
     startButton.disabled = true;
-    startButton.textContent = "登场中...";
+    tournamentStartButton.disabled = true;
+    activeStartButton.textContent = "登场中...";
     return;
   }
 
-  startButton.disabled = !canStartMatch() || recordingState.active;
-  startButton.textContent = canStartMatch() ? "开始出战" : "至少选择 2 名角色";
+  startButton.disabled = !canStartMatch() || recordingState.active || tournamentState.active;
+  tournamentStartButton.disabled = !canStartMatch() || recordingState.active || tournamentState.active;
+  activeStartButton.textContent = appMode === "tournament"
+    ? (canStartMatch() ? "开始赛事" : `需要 ${TOURNAMENT_REQUIRED_ROSTER} 名角色`)
+    : (canStartMatch() ? "开始出战" : "至少选择 2 名角色");
+  if (appMode === "tournament") {
+    startButton.textContent = "开始出战";
+  } else {
+    tournamentStartButton.textContent = "开始赛事";
+  }
 }
 
 function collectOverrides(character) {
@@ -233,6 +314,7 @@ function renderRoster() {
       } else {
         selectedRosterIds.add(character.id);
       }
+      invalidateTournamentBracket();
       renderRoster();
     });
 
@@ -420,6 +502,7 @@ function renderScoreboard(snapshot) {
       const hpRatio = actor.maxHp ? actor.hp / actor.maxHp : 0;
       const essenceRatio = actor.maxEssence ? actor.essence / actor.maxEssence : 0;
       const title = character?.title ?? "";
+      const teamLabel = actor.teamLabel ?? "";
       const skillText = [
         character?.basicAttack?.name ? `骞矨 ${character.basicAttack.name}` : "",
         character?.ultimate?.name ? `澶ф嫑 ${character.ultimate.name}` : "",
@@ -433,6 +516,7 @@ function renderScoreboard(snapshot) {
             <div class="score-name">
               <strong style="color:${actor.color}">${actor.name}</strong>
               ${title ? `<span class="score-title">${title}</span>` : ""}
+              ${teamLabel ? `<span class="score-title">${teamLabel}</span>` : ""}
             </div>
             <span class="score-state">${actor.alive ? "瀛樻椿" : "娣樻卑"}</span>
           </div>
@@ -453,11 +537,17 @@ function renderScoreboard(snapshot) {
 function updateHud(snapshot) {
   if (!snapshot) {
     hudTimer.textContent = "0.0s";
-    hudPhase.textContent = `常规阶段，${matchSettings.duelTime}s 后进入决斗`;
+    hudPhase.textContent = appMode === "tournament"
+      ? "赛事流程待开始"
+      : `常规阶段，${matchSettings.duelTime}s 后进入决斗`;
     return;
   }
 
   hudTimer.textContent = `${snapshot.elapsed.toFixed(1)}s`;
+  if (appMode === "tournament" && tournamentState.currentRoundLabel) {
+    hudPhase.textContent = `${tournamentState.currentRoundLabel} 对局中`;
+    return;
+  }
   hudPhase.textContent = snapshot.duelTriggered
     ? "决斗时刻"
     : `常规阶段，${snapshot.nextPhaseIn.toFixed(1)}s 后进入决斗`;
@@ -501,6 +591,748 @@ function getHudDisplay(snapshot) {
     timer: `${snapshot.elapsed.toFixed(1)}s`,
     phase: snapshot.duelTriggered ? "决斗时刻" : `常规阶段，${snapshot.nextPhaseIn.toFixed(1)}s 后进入决斗`,
   };
+}
+
+function getTournamentGroupById(groupId) {
+  return tournamentState.groups.find((group) => group.id === groupId) ?? null;
+}
+
+function getTournamentMatchById(matchId) {
+  for (const round of tournamentState.rounds) {
+    const match = round.matches.find((entry) => entry.id === matchId);
+    if (match) {
+      return match;
+    }
+  }
+  return null;
+}
+
+function resolveTournamentRef(ref) {
+  if (!ref) {
+    return null;
+  }
+  if (ref.type === "group") {
+    return ref.id;
+  }
+  const match = getTournamentMatchById(ref.id);
+  return match?.winnerGroupId ?? null;
+}
+
+function getGroupsForMatch(match) {
+  const leftGroupId = resolveTournamentRef(match.leftRef);
+  const rightGroupId = resolveTournamentRef(match.rightRef);
+  return [getTournamentGroupById(leftGroupId), getTournamentGroupById(rightGroupId)];
+}
+
+function getGroupMatchStatus(groupId) {
+  if (!groupId) {
+    return "";
+  }
+  if (tournamentState.championGroupId === groupId) {
+    return "champion";
+  }
+  if (tournamentState.rounds.some((round) => round.matches.some((match) => match.loserGroupId === groupId))) {
+    return "eliminated";
+  }
+  if (tournamentState.currentMatchId) {
+    const currentMatch = getTournamentMatchById(tournamentState.currentMatchId);
+    const [leftGroup, rightGroup] = currentMatch ? getGroupsForMatch(currentMatch) : [];
+    if (leftGroup?.id === groupId || rightGroup?.id === groupId) {
+      return "active";
+    }
+  }
+  return "pending";
+}
+
+function buildTournamentRounds(groups) {
+  const createMatch = (id, label, roundLabel, leftRef, rightRef) => ({
+    id,
+    label,
+    roundLabel,
+    leftRef,
+    rightRef,
+    winnerGroupId: null,
+    loserGroupId: null,
+  });
+
+  return [
+    {
+      key: "quarterfinals",
+      label: "8进4",
+      matches: [
+        createMatch("qf-1", "对局 1", "8进4", { type: "group", id: groups[0].id }, { type: "group", id: groups[1].id }),
+        createMatch("qf-2", "对局 2", "8进4", { type: "group", id: groups[2].id }, { type: "group", id: groups[3].id }),
+        createMatch("qf-3", "对局 3", "8进4", { type: "group", id: groups[4].id }, { type: "group", id: groups[5].id }),
+        createMatch("qf-4", "对局 4", "8进4", { type: "group", id: groups[6].id }, { type: "group", id: groups[7].id }),
+      ],
+    },
+    {
+      key: "semifinals",
+      label: "4进2",
+      matches: [
+        createMatch("sf-1", "对局 5", "4进2", { type: "match", id: "qf-1" }, { type: "match", id: "qf-2" }),
+        createMatch("sf-2", "对局 6", "4进2", { type: "match", id: "qf-3" }, { type: "match", id: "qf-4" }),
+      ],
+    },
+    {
+      key: "final",
+      label: "决胜组",
+      matches: [
+        createMatch("final-1", "决胜战", "决胜组", { type: "match", id: "sf-1" }, { type: "match", id: "sf-2" }),
+      ],
+    },
+  ];
+}
+
+function getTournamentWinnerSlotId(matchId) {
+  return `winner:${matchId}`;
+}
+
+function getTournamentSourceSlotIds(match) {
+  return [match.leftRef, match.rightRef].map((ref) => (
+    ref.type === "group" ? `group:${ref.id}` : getTournamentWinnerSlotId(ref.id)
+  ));
+}
+
+function getTournamentBracketLayout() {
+  const stageX = [0.11, 0.39, 0.67, 0.89];
+  const groupY = Array.from({ length: 8 }, (_, index) => 0.11 + index * 0.11);
+  const quarterY = [0, 1, 2, 3].map((index) => (groupY[index * 2] + groupY[index * 2 + 1]) / 2);
+  const semiY = [0, 1].map((index) => (quarterY[index * 2] + quarterY[index * 2 + 1]) / 2);
+  const finalY = [(semiY[0] + semiY[1]) / 2];
+
+  const slots = {};
+  tournamentState.groups.forEach((group, index) => {
+    slots[`group:${group.id}`] = { x: stageX[0], y: groupY[index], stage: 0 };
+  });
+  tournamentState.rounds[0]?.matches.forEach((match, index) => {
+    slots[getTournamentWinnerSlotId(match.id)] = { x: stageX[1], y: quarterY[index], stage: 1 };
+  });
+  tournamentState.rounds[1]?.matches.forEach((match, index) => {
+    slots[getTournamentWinnerSlotId(match.id)] = { x: stageX[2], y: semiY[index], stage: 2 };
+  });
+  if (tournamentState.rounds[2]?.matches[0]) {
+    slots[getTournamentWinnerSlotId(tournamentState.rounds[2].matches[0].id)] = {
+      x: stageX[3],
+      y: finalY[0],
+      stage: 3,
+    };
+  }
+
+  return {
+    stageX,
+    slots,
+    headings: [
+      { label: "小组", x: stageX[0] },
+      { label: "8进4", x: stageX[1] },
+      { label: "4进2", x: stageX[2] },
+      { label: "决胜组", x: stageX[3] },
+    ],
+  };
+}
+
+function getTournamentSlotGroup(slotId) {
+  if (!slotId) {
+    return null;
+  }
+  if (slotId.startsWith("group:")) {
+    return getTournamentGroupById(slotId.slice(6));
+  }
+  if (slotId.startsWith("winner:")) {
+    const match = getTournamentMatchById(slotId.slice(7));
+    return getTournamentGroupById(match?.winnerGroupId);
+  }
+  return null;
+}
+
+function getTournamentNextSlotId(matchId) {
+  return getTournamentWinnerSlotId(matchId);
+}
+
+function getTournamentGroupColors(group) {
+  return {
+    primary: group?.members?.[0]?.color ?? "#f4dc9c",
+    secondary: group?.members?.[1]?.color ?? group?.members?.[0]?.color ?? "#ffffff",
+  };
+}
+
+function getTournamentGroupDisplayText(group) {
+  if (!group?.members?.length) {
+    return "待定";
+  }
+  return group.members.map((member) => member.name).join(" / ");
+}
+
+function getWinningSourceSlotId(match, winnerGroupId) {
+  const [leftGroup, rightGroup] = getGroupsForMatch(match);
+  const [leftSlotId, rightSlotId] = getTournamentSourceSlotIds(match);
+  return leftGroup?.id === winnerGroupId ? leftSlotId : rightGroup?.id === winnerGroupId ? rightSlotId : leftSlotId;
+}
+
+function generateTournamentGroups() {
+  const characters = shuffle(getSelectedCharacters()).slice(0, TOURNAMENT_REQUIRED_ROSTER);
+  const groups = [];
+  for (let index = 0; index < characters.length; index += 2) {
+    const groupIndex = index / 2;
+    groups.push({
+      id: `group-${groupIndex + 1}`,
+      label: `${String.fromCharCode(65 + groupIndex)}组`,
+      members: characters.slice(index, index + 2).map((character) => ({
+        id: character.id,
+        name: character.name,
+        title: character.title,
+        color: character.color,
+      })),
+    });
+  }
+
+  tournamentState.groups = groups;
+  tournamentState.rounds = buildTournamentRounds(groups);
+  tournamentState.generated = true;
+  tournamentState.championGroupId = null;
+  tournamentState.latestResult = null;
+  tournamentState.currentMatchId = null;
+  tournamentState.currentRoundLabel = "抽签完成";
+  renderTournamentPanel();
+  return groups;
+}
+
+function getTournamentRosterPool() {
+  return getSelectedCharacters().map((character) => ({
+    id: character.id,
+    name: character.name,
+    title: character.title,
+    color: character.color,
+  }));
+}
+
+function renderTournamentPanel() {
+  tournamentPanel.classList.toggle("hidden", appMode !== "tournament");
+  if (appMode !== "tournament") {
+    return;
+  }
+
+  tournamentSummaryElement.textContent = tournamentState.generated
+    ? "已生成 8 个双人小组，赛程按固定半区推进。"
+    : "点击“随机抽签分组”生成 8 个双人小组，再开始整届赛事。";
+  tournamentRoundIndicator.textContent = tournamentState.currentRoundLabel || "等待抽签";
+  tournamentDrawButton.disabled = !canStartTournament() || tournamentState.active;
+
+  if (!tournamentState.generated) {
+    tournamentGroupsElement.classList.add("hidden");
+    tournamentGroupsElement.innerHTML = "";
+    tournamentBracketElement.innerHTML = "";
+    return;
+  }
+
+  tournamentGroupsElement.classList.add("hidden");
+  tournamentGroupsElement.innerHTML = "";
+  const layout = getTournamentBracketLayout();
+  const slotIds = Object.keys(layout.slots);
+  const connectorPaths = tournamentState.rounds.flatMap((round) =>
+    round.matches.map((match) => {
+      const targetSlotId = getTournamentWinnerSlotId(match.id);
+      const targetPos = layout.slots[targetSlotId];
+      const sourcePoints = getTournamentSourceSlotIds(match)
+        .map((slotId) => layout.slots[slotId])
+        .filter(Boolean);
+      return sourcePoints.map((sourcePos) => {
+        const midX = (sourcePos.x + targetPos.x) / 2;
+        return `
+          <path
+            d="M ${sourcePos.x * 100} ${sourcePos.y * 100}
+               L ${midX * 100} ${sourcePos.y * 100}
+               L ${midX * 100} ${targetPos.y * 100}
+               L ${targetPos.x * 100} ${targetPos.y * 100}"
+          />
+        `;
+      }).join("");
+    }),
+  ).join("");
+
+  tournamentBracketElement.innerHTML = `
+    <div class="tournament-tree">
+      <svg class="tournament-tree-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        ${connectorPaths}
+      </svg>
+      ${layout.headings.map((heading) => `
+        <div class="tournament-tree-heading" style="left:${heading.x * 100}%">${heading.label}</div>
+      `).join("")}
+      ${slotIds.map((slotId) => {
+        const group = getTournamentSlotGroup(slotId);
+        const pos = layout.slots[slotId];
+        const status = group ? getGroupMatchStatus(group.id) : "pending";
+        const members = group?.members ?? [];
+        return `
+          <div
+            class="tournament-tree-slot ${status}"
+            style="left:${pos.x * 100}%; top:${pos.y * 100}%;"
+            data-slot-id="${slotId}"
+            ${group ? `data-group-id="${group.id}"` : ""}
+          >
+            <div class="tournament-tree-token">
+              <div class="tournament-tree-balls">
+                ${(members.length ? members : [{ color: "#7a7a7a" }, { color: "#5a5a5a" }]).map((member) => `
+                  <span class="tournament-tree-orb" style="--member-color:${member.color ?? "#7a7a7a"}"></span>
+                `).join("")}
+              </div>
+              <div class="tournament-tree-stems">
+                <span class="tournament-tree-stem"></span>
+                <span class="tournament-tree-stem"></span>
+              </div>
+              <div class="tournament-tree-bases">
+                <span class="tournament-tree-base"></span>
+                <span class="tournament-tree-base"></span>
+              </div>
+            </div>
+            <div class="tournament-tree-meta">
+              <div class="tournament-tree-members">
+                ${members.length
+                  ? members.map((member) => `<span style="color:${member.color}">${member.name}</span>`).join("")
+                  : "<span>等待晋级</span>"}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function captureTournamentPromotion(match, winnerGroupId) {
+  const sourceSlotId = getWinningSourceSlotId(match, winnerGroupId);
+  const sourceElement = tournamentBracketElement.querySelector(
+    `[data-slot-id="${sourceSlotId}"][data-group-id="${winnerGroupId}"]`,
+  );
+  if (!sourceElement) {
+    return null;
+  }
+  const sourceToken = sourceElement.querySelector(".tournament-tree-token") ?? sourceElement;
+  return {
+    winnerGroupId,
+    sourceSlotId,
+    targetSlotId: getTournamentNextSlotId(match.id),
+    sourceRect: sourceToken.getBoundingClientRect(),
+  };
+}
+
+async function animateTournamentPromotion(promotion) {
+  if (!promotion) {
+    return;
+  }
+
+  const targetElement = tournamentBracketElement.querySelector(
+    `[data-slot-id="${promotion.targetSlotId}"][data-group-id="${promotion.winnerGroupId}"]`,
+  );
+  if (!targetElement) {
+    return;
+  }
+
+  const token = targetElement.querySelector(".tournament-tree-token");
+  if (!token) {
+    return;
+  }
+
+  const targetRect = token.getBoundingClientRect();
+  const floating = document.createElement("div");
+  floating.className = "tournament-promotion-float";
+  floating.style.width = `${targetRect.width}px`;
+  floating.style.height = `${targetRect.height}px`;
+  floating.style.left = `${promotion.sourceRect.left + promotion.sourceRect.width * 0.5}px`;
+  floating.style.top = `${promotion.sourceRect.top + promotion.sourceRect.height * 0.3}px`;
+  floating.innerHTML = token.outerHTML;
+  document.body.appendChild(floating);
+
+  targetElement.classList.add("promotion-target");
+  await floating.animate([
+    {
+      transform: "translate(-50%, -50%) scale(1)",
+      opacity: 1,
+      filter: "drop-shadow(0 0 0 rgba(255,255,255,0))",
+    },
+    {
+      transform: `translate(${targetRect.left + targetRect.width * 0.5 - (promotion.sourceRect.left + promotion.sourceRect.width * 0.5)}px, ${targetRect.top + targetRect.height * 0.5 - (promotion.sourceRect.top + promotion.sourceRect.height * 0.3)}px) translate(-50%, -50%) scale(0.92)`,
+      opacity: 0.94,
+      filter: "drop-shadow(0 0 18px rgba(255,226,137,0.45))",
+    },
+  ], {
+    duration: TOURNAMENT_PROMOTION_MS,
+    easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+    fill: "forwards",
+  }).finished.catch(() => {});
+
+  floating.remove();
+  window.setTimeout(() => targetElement.classList.remove("promotion-target"), 700);
+}
+
+function resetTournamentRunState() {
+  tournamentState.active = false;
+  tournamentState.currentMatchId = null;
+  tournamentState.currentRoundLabel = tournamentState.generated ? "等待开赛" : "等待抽签";
+  tournamentState.pendingResolve = null;
+  tournamentState.pendingReject = null;
+  tournamentState.cancelled = false;
+}
+
+function invalidateTournamentBracket() {
+  if (tournamentState.active) {
+    return;
+  }
+  tournamentState.groups = [];
+  tournamentState.rounds = [];
+  tournamentState.generated = false;
+  tournamentState.championGroupId = null;
+  tournamentState.latestResult = null;
+  tournamentState.currentMatchId = null;
+  tournamentState.currentRoundLabel = "等待抽签";
+  renderTournamentPanel();
+}
+
+function resetTournamentBracketProgress() {
+  tournamentState.rounds.forEach((round) => {
+    round.matches.forEach((match) => {
+      match.winnerGroupId = null;
+      match.loserGroupId = null;
+    });
+  });
+  tournamentState.championGroupId = null;
+  tournamentState.latestResult = null;
+  tournamentState.currentMatchId = null;
+  tournamentState.currentRoundLabel = "等待开赛";
+  renderTournamentPanel();
+}
+
+function stopTournamentScene() {
+  tournamentState.sceneStopper?.();
+  tournamentState.sceneStopper = null;
+}
+
+function drawTournamentToken(ctx, x, y, radius, member) {
+  const gradient = ctx.createRadialGradient(x - radius * 0.3, y - radius * 0.35, radius * 0.15, x, y, radius);
+  gradient.addColorStop(0, "#ffffff");
+  gradient.addColorStop(0.38, member.color);
+  gradient.addColorStop(1, "rgba(10,10,10,0.9)");
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.16)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function drawTournamentGroupToken(ctx, x, y, radius, group, alpha = 1) {
+  const members = group?.members?.length ? group.members : [{ color: "#7a7a7a" }, { color: "#5a5a5a" }];
+  const orbOffset = radius * 0.62;
+  const orbRadius = radius * 0.72;
+  const stemW = Math.max(9, radius * 0.18);
+  const stemH = Math.max(30, radius * 0.68);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  members.slice(0, 2).forEach((member, index) => {
+    const orbX = x + (index === 0 ? -orbOffset : orbOffset);
+    const orb = ctx.createRadialGradient(
+      orbX - orbRadius * 0.3,
+      y - orbRadius * 0.34,
+      orbRadius * 0.1,
+      orbX,
+      y,
+      orbRadius,
+    );
+    orb.addColorStop(0, "#ffffff");
+    orb.addColorStop(0.34, member.color ?? "#7a7a7a");
+    orb.addColorStop(1, "rgba(14,14,14,0.96)");
+    ctx.fillStyle = orb;
+    ctx.beginPath();
+    ctx.arc(orbX, y, orbRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.14)";
+    ctx.lineWidth = Math.max(2, radius * 0.08);
+    ctx.stroke();
+
+    ctx.fillStyle = member.color ?? "#7a7a7a";
+    ctx.fillRect(orbX - stemW / 2, y + orbRadius * 0.92, stemW, stemH);
+    ctx.beginPath();
+    ctx.arc(orbX, y + orbRadius + stemH + radius * 0.24, radius * 0.34, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+function renderTournamentBracketCanvas(ctx, scene, elapsed, width, height) {
+  const layout = getTournamentBracketLayout();
+  const slotPositions = Object.fromEntries(
+    Object.entries(layout.slots).map(([slotId, pos]) => [
+      slotId,
+      {
+        x: pos.x * width,
+        y: 320 + pos.y * (height - 520),
+      },
+    ]),
+  );
+
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(4,4,6,0.98)";
+  ctx.lineWidth = 16;
+
+  tournamentState.rounds.forEach((round) => {
+    round.matches.forEach((match) => {
+      const target = slotPositions[getTournamentWinnerSlotId(match.id)];
+      getTournamentSourceSlotIds(match).forEach((slotId) => {
+        const source = slotPositions[slotId];
+        if (!source || !target) {
+          return;
+        }
+        const midX = (source.x + target.x) / 2;
+        ctx.beginPath();
+        ctx.moveTo(source.x, source.y);
+        ctx.lineTo(midX, source.y);
+        ctx.lineTo(midX, target.y);
+        ctx.lineTo(target.x, target.y);
+        ctx.stroke();
+      });
+    });
+  });
+
+  layout.headings.forEach((heading) => {
+    ctx.fillStyle = "#f4dc9c";
+    ctx.font = '700 24px "Microsoft YaHei UI", sans-serif';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(heading.label, heading.x * width, 286);
+  });
+
+  Object.entries(slotPositions).forEach(([slotId, point]) => {
+    const group = getTournamentSlotGroup(slotId);
+    const label = group?.label ?? "";
+    const isPlaceholder = !group;
+    const status = group ? getGroupMatchStatus(group.id) : "pending";
+    let alpha = status === "eliminated" ? 0.38 : 1;
+    if (scene.promotion?.targetSlotId === slotId) {
+      const moveT = Math.min(1, elapsed / TOURNAMENT_PROMOTION_MS);
+      alpha *= moveT > 0.82 ? 1 : 0.18;
+    }
+
+    if (isPlaceholder) {
+      ctx.fillStyle = "rgba(255,255,255,0.08)";
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 28, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
+
+    drawTournamentGroupToken(ctx, point.x, point.y, 34, group, alpha);
+    if (status === "champion") {
+      ctx.strokeStyle = "rgba(255,226,137,0.5)";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, 48, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = status === "eliminated" ? "rgba(255,255,255,0.72)" : "#ffffff";
+    ctx.font = '500 15px "Microsoft YaHei UI", sans-serif';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(getTournamentGroupDisplayText(group), point.x, point.y + 78);
+  });
+
+  if (scene.promotion) {
+    const source = slotPositions[scene.promotion.sourceSlotId];
+    const target = slotPositions[scene.promotion.targetSlotId];
+    const group = getTournamentGroupById(scene.promotion.winnerGroupId);
+    if (source && target && group) {
+      const moveT = Math.min(1, elapsed / TOURNAMENT_PROMOTION_MS);
+      const eased = moveT < 0.5 ? 4 * moveT * moveT * moveT : 1 - Math.pow(-2 * moveT + 2, 3) / 2;
+      const x = source.x + (target.x - source.x) * eased;
+      const y = source.y + (target.y - source.y) * eased;
+      drawTournamentGroupToken(ctx, x, y, 38, group);
+    }
+  }
+
+  ctx.restore();
+}
+
+function renderTournamentScene(scene, elapsed) {
+  const ctx = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+
+  ctx.clearRect(0, 0, width, height);
+  const bg = ctx.createLinearGradient(0, 0, width, height);
+  bg.addColorStop(0, "#050505");
+  bg.addColorStop(1, "#171717");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  ctx.beginPath();
+  ctx.arc(width * 0.12, height * 0.14, width * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#f4dc9c";
+  ctx.font = '600 34px "Microsoft YaHei UI", sans-serif';
+  ctx.fillText(scene.eyebrow ?? "TOURNAMENT", width / 2, 120);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = '700 70px Georgia, "Microsoft YaHei UI", serif';
+  ctx.fillText(scene.title, width / 2, 210);
+  ctx.fillStyle = "rgba(255,255,255,0.72)";
+  ctx.font = '500 28px "Microsoft YaHei UI", sans-serif';
+  ctx.fillText(scene.subtitle ?? "", width / 2, 260);
+
+  if (scene.type === "draw") {
+    const pool = scene.pool;
+    const groupWidth = 232;
+    const groupHeight = 170;
+    const startX = 60;
+    const startY = 340;
+    const gapX = 18;
+    const gapY = 18;
+    scene.groups.forEach((group, index) => {
+      const col = index % 4;
+      const row = Math.floor(index / 4);
+      const x = startX + col * (groupWidth + gapX);
+      const y = startY + row * (groupHeight + gapY);
+      const settleProgress = Math.min(1, elapsed / TOURNAMENT_DRAW_MS);
+      const settleThreshold = (index + 1) / scene.groups.length;
+      const settled = settleProgress >= settleThreshold;
+
+      fillRoundedPanel(ctx, x, y, groupWidth, groupHeight, 22);
+      group.members.forEach((member, memberIndex) => {
+        const displayMember = settled
+          ? member
+          : pool[(Math.floor(elapsed / 70) + index * 5 + memberIndex * 3) % pool.length];
+        const tokenY = y + 64 + memberIndex * 58;
+        drawTournamentToken(ctx, x + 32, tokenY, 16, displayMember);
+        ctx.fillStyle = displayMember.color;
+        ctx.font = '700 24px "Microsoft YaHei UI", sans-serif';
+        ctx.fillText(displayMember.name, x + 58, tokenY + 8);
+      });
+    });
+    return;
+  }
+
+  if (scene.type === "champion") {
+    const group = scene.group;
+    fillRoundedPanel(ctx, 160, 360, width - 320, 820, 32);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffe9a8";
+    ctx.font = '700 42px "Microsoft YaHei UI", sans-serif';
+    ctx.fillText("决胜组出线", width / 2, 430);
+    group.members.forEach((member, index) => {
+      const centerX = width / 2 + (index === 0 ? -170 : 170);
+      drawTournamentToken(ctx, centerX, 650, 88, member);
+      ctx.fillStyle = member.color;
+      ctx.font = '700 38px "Microsoft YaHei UI", sans-serif';
+      ctx.fillText(member.name, centerX, 790);
+      ctx.fillStyle = "rgba(255,255,255,0.68)";
+      ctx.font = '500 24px "Microsoft YaHei UI", sans-serif';
+      ctx.fillText(member.title, centerX, 832);
+    });
+    return;
+  }
+
+  renderTournamentBracketCanvas(ctx, scene, elapsed, width, height);
+}
+
+function playTournamentScene(scene, duration) {
+  stopTournamentScene();
+  return new Promise((resolve) => {
+    const start = performance.now();
+    let rafId = 0;
+    const frame = (now) => {
+      const elapsed = now - start;
+      renderTournamentScene(scene, elapsed);
+      if (elapsed >= duration || tournamentState.cancelled) {
+        tournamentState.sceneStopper = null;
+        resolve();
+        return;
+      }
+      rafId = requestAnimationFrame(frame);
+    };
+    tournamentState.sceneStopper = () => {
+      cancelAnimationFrame(rafId);
+      resolve();
+    };
+    rafId = requestAnimationFrame(frame);
+  });
+}
+
+function getNextTournamentMatch() {
+  for (const round of tournamentState.rounds) {
+    for (const match of round.matches) {
+      const [leftGroup, rightGroup] = getGroupsForMatch(match);
+      if (!match.winnerGroupId && leftGroup && rightGroup) {
+        return match;
+      }
+    }
+  }
+  return null;
+}
+
+function getTournamentWinnerFromSnapshot(snapshot, match) {
+  const [leftGroup, rightGroup] = getGroupsForMatch(match);
+  const candidateIds = [leftGroup?.id, rightGroup?.id].filter(Boolean);
+  if (snapshot?.winnerTeamId && candidateIds.includes(snapshot.winnerTeamId)) {
+    return snapshot.winnerTeamId;
+  }
+
+  const scores = new Map(candidateIds.map((id) => [id, 0]));
+  snapshot?.actors?.forEach((actor) => {
+    if (!scores.has(actor.teamId)) {
+      return;
+    }
+    const weight = actor.hp + (actor.alive ? actor.maxHp * 2 : 0);
+    scores.set(actor.teamId, (scores.get(actor.teamId) ?? 0) + weight);
+  });
+
+  const sorted = [...scores.entries()].sort((left, right) => right[1] - left[1]);
+  return sorted[0]?.[0] ?? leftGroup?.id ?? null;
+}
+
+function applyTournamentMatchResult(match, snapshot) {
+  const [leftGroup, rightGroup] = getGroupsForMatch(match);
+  const winnerGroupId = getTournamentWinnerFromSnapshot(snapshot, match);
+  const loserGroupId = [leftGroup?.id, rightGroup?.id].find((id) => id && id !== winnerGroupId) ?? null;
+  match.winnerGroupId = winnerGroupId;
+  match.loserGroupId = loserGroupId;
+  tournamentState.latestResult = {
+    matchId: match.id,
+    winnerGroupId,
+    loserGroupId,
+  };
+  if (match.id === "final-1") {
+    tournamentState.championGroupId = winnerGroupId;
+  }
+  renderTournamentPanel();
+  return tournamentState.latestResult;
+}
+
+function setAppMode(mode) {
+  appMode = mode;
+  const isClassic = mode === "classic";
+  classicModePanel.classList.toggle("hidden", !isClassic);
+  tournamentModePanel.classList.toggle("hidden", isClassic);
+  tournamentPanel.classList.toggle("hidden", isClassic);
+  modeClassicButton.classList.toggle("active", isClassic);
+  modeTournamentButton.classList.toggle("active", !isClassic);
+  modeClassicButton.setAttribute("aria-selected", isClassic ? "true" : "false");
+  modeTournamentButton.setAttribute("aria-selected", !isClassic ? "true" : "false");
+  renderTournamentPanel();
+  updateRosterStatus();
+  updateRecordButton();
+  updateHud(game.snapshot?.() ?? null);
+}
+
+function waitForTournamentMatchEnd() {
+  return new Promise((resolve, reject) => {
+    tournamentState.pendingResolve = resolve;
+    tournamentState.pendingReject = reject;
+  });
 }
 
 function roundRectPath(ctx, x, y, width, height, radius) {
@@ -682,25 +1514,28 @@ function buildRecordingFilename() {
 }
 
 function updateRecordButton() {
-  if (!recordButton) {
+  const activeButton = getCurrentRecordButton();
+  if (!activeButton) {
     return;
   }
 
   const supported = canRecordCanvas();
 
   if (entryState.active) {
-    recordButton.disabled = true;
-    recordButton.textContent = "登场中...";
+    activeButton.disabled = true;
+    activeButton.textContent = "登场中...";
     return;
   }
 
-  recordButton.disabled = recordingState.active ? false : !canStartMatch() || !supported;
+  activeButton.disabled = recordingState.active ? false : !canStartMatch() || !supported || tournamentState.active;
   if (recordingState.active) {
-    recordButton.textContent = "停止录制";
+    activeButton.textContent = appMode === "tournament" ? "停止录制赛事" : "停止录制";
     return;
   }
 
-  recordButton.textContent = supported ? "录制对局" : "无法录制";
+  activeButton.textContent = supported
+    ? (appMode === "tournament" ? "录制整届赛事" : "录制对局")
+    : "无法录制";
 }
 
 function downloadRecording(blob, mimeType) {
@@ -1374,6 +2209,10 @@ function stopRecordedMatch() {
     return;
   }
 
+  if (tournamentState.active) {
+    stopTournamentRun();
+  }
+
   const snapshot = game.snapshot?.() ?? null;
   if (snapshot) {
     recordingState.latestSnapshot = snapshot;
@@ -1387,6 +2226,9 @@ function stopRecordedMatch() {
 }
 
 async function startMatch({ record = false } = {}) {
+  if (appMode === "tournament") {
+    return startTournament({ record });
+  }
   if (recordingState.active || entryState.active) {
     return;
   }
@@ -1426,9 +2268,178 @@ async function startMatch({ record = false } = {}) {
   hideEntryStage();
 }
 
+function stopTournamentRun() {
+  tournamentState.cancelled = true;
+  stopTournamentScene();
+  if (tournamentState.pendingResolve) {
+    const resolve = tournamentState.pendingResolve;
+    tournamentState.pendingResolve = null;
+    tournamentState.pendingReject = null;
+    resolve(null);
+  }
+  game.stop();
+}
+
+async function runTournamentMatch(match) {
+  const [leftGroup, rightGroup] = getGroupsForMatch(match);
+  if (!leftGroup || !rightGroup) {
+    return null;
+  }
+
+  tournamentState.currentMatchId = match.id;
+  tournamentState.currentRoundLabel = `${match.roundLabel} · ${getTournamentGroupDisplayText(leftGroup)} VS ${getTournamentGroupDisplayText(rightGroup)}`;
+  renderTournamentPanel();
+
+  await playTournamentScene({
+    type: "bracket",
+    title: `${getTournamentGroupDisplayText(leftGroup)} VS ${getTournamentGroupDisplayText(rightGroup)}`,
+    subtitle: `${match.roundLabel} ${match.label}`,
+    rounds: tournamentState.rounds,
+    activeMatchId: match.id,
+  }, TOURNAMENT_MATCH_OVERLAY_MS);
+
+  if (tournamentState.cancelled) {
+    return null;
+  }
+
+  const competitors = [leftGroup, rightGroup].flatMap((group) =>
+    group.members.map((member) => ({
+      characterId: member.id,
+      teamId: group.id,
+      teamLabel: getTournamentGroupDisplayText(group),
+    })),
+  );
+  const focusId = competitors[0]?.characterId;
+
+  overlay.classList.add("hidden");
+  overlay.innerHTML = "";
+
+  await runEntryAnimation(competitors.map((entry) => entry.characterId));
+  entryState.outroActive = true;
+  game.start(focusId, competitors, {
+    includeEdgeHazards: matchSettings.includeEdgeHazards,
+    duelTime: matchSettings.duelTime,
+  });
+  game.startEntryTransition();
+  await runEntryOutroTransition();
+  game.endEntryTransition();
+  hideEntryStage();
+
+  const snapshot = await waitForTournamentMatchEnd();
+  game.stop();
+  if (!snapshot || tournamentState.cancelled) {
+    return null;
+  }
+
+  const winnerGroupId = getTournamentWinnerFromSnapshot(snapshot, match);
+  const promotion = captureTournamentPromotion(match, winnerGroupId);
+  applyTournamentMatchResult(match, snapshot);
+  await animateTournamentPromotion(promotion);
+  const winnerGroup = getTournamentGroupById(match.winnerGroupId);
+  tournamentState.currentRoundLabel = `${getTournamentGroupDisplayText(winnerGroup)} 晋级`;
+  renderTournamentPanel();
+
+  await playTournamentScene({
+    type: "bracket",
+    title: winnerGroup ? `${getTournamentGroupDisplayText(winnerGroup)} 晋级` : "赛果已更新",
+    subtitle: `${match.roundLabel} ${match.label} 结束`,
+    rounds: tournamentState.rounds,
+    activeMatchId: match.id,
+    promotion: promotion
+      ? {
+        winnerGroupId,
+        sourceSlotId: promotion.sourceSlotId,
+        targetSlotId: promotion.targetSlotId,
+      }
+      : null,
+  }, TOURNAMENT_RESULT_BRACKET_MS);
+
+  return snapshot;
+}
+
+async function startTournament({ record = false } = {}) {
+  if (tournamentState.active || entryState.active) {
+    return;
+  }
+  if (!canStartTournament()) {
+    return;
+  }
+
+  if (record && !startCanvasRecording()) {
+    return;
+  }
+
+  closeRosterModal();
+  overlay.classList.add("hidden");
+  overlay.innerHTML = "";
+  battleFeedItems.length = 0;
+  feed.innerHTML = "";
+  game.stop();
+  resetTournamentRunState();
+  tournamentState.active = true;
+  tournamentState.cancelled = false;
+
+  if (!tournamentState.generated) {
+    generateTournamentGroups();
+    await playTournamentScene({
+      type: "draw",
+      eyebrow: "RANDOM DRAW",
+      title: "赛事抽签分组",
+      subtitle: "16 名角色随机分成 8 个双人小组",
+      groups: tournamentState.groups,
+      pool: getTournamentRosterPool(),
+    }, TOURNAMENT_DRAW_MS);
+  } else {
+    resetTournamentBracketProgress();
+    await playTournamentScene({
+      type: "bracket",
+      title: "赛事赛程已就绪",
+      subtitle: "按顺序开始每一轮小组对决",
+      rounds: tournamentState.rounds,
+      activeMatchId: null,
+    }, TOURNAMENT_BRACKET_HOLD_MS);
+  }
+
+  try {
+    let match = getNextTournamentMatch();
+    while (match && !tournamentState.cancelled) {
+      const snapshot = await runTournamentMatch(match);
+      if (!snapshot) {
+        break;
+      }
+      match = getNextTournamentMatch();
+    }
+
+    if (!tournamentState.cancelled && tournamentState.championGroupId) {
+      const championGroup = getTournamentGroupById(tournamentState.championGroupId);
+      tournamentState.currentRoundLabel = "冠军已诞生";
+      renderTournamentPanel();
+      await playTournamentScene({
+        type: "champion",
+        eyebrow: "TOURNAMENT WINNER",
+        title: "决胜组出线",
+        subtitle: championGroup ? `${getTournamentGroupDisplayText(championGroup)} 成为本届冠军组` : "",
+        group: championGroup,
+      }, TOURNAMENT_CHAMPION_HOLD_MS);
+    }
+  } finally {
+    tournamentState.active = false;
+    tournamentState.currentMatchId = null;
+    tournamentState.currentRoundLabel = tournamentState.championGroupId ? "冠军已诞生" : "等待开赛";
+    renderTournamentPanel();
+    updateRosterStatus();
+    updateRecordButton();
+    if (recordingState.active) {
+      scheduleCanvasRecordingStop();
+    }
+  }
+}
+
 const game = new ArenaGame(canvas, {
   onAnnouncement({ stamp, message }) {
-    pushFeed(stamp, message);
+    if (!tournamentState.active) {
+      pushFeed(stamp, message);
+    }
   },
   onSound(event) {
     playSound(event);
@@ -1443,16 +2454,30 @@ const game = new ArenaGame(canvas, {
     hideEntryStage();
     overlay.classList.add("hidden");
     overlay.innerHTML = "";
-    battleFeedItems.length = 0;
-    feed.innerHTML = "";
+    if (!tournamentState.active) {
+      battleFeedItems.length = 0;
+      feed.innerHTML = "";
+    }
     updateHud(snapshot);
     renderScoreboard(snapshot);
     recordingState.latestSnapshot = snapshot;
     renderRecordingFrame(snapshot);
   },
   onMatchEnd(snapshot) {
-    const winner = snapshot.actors.find((actor) => actor.id === snapshot.winnerId);
     recordingState.latestSnapshot = snapshot;
+    renderRecordingFrame(snapshot);
+
+    if (tournamentState.active) {
+      if (tournamentState.pendingResolve) {
+        const resolve = tournamentState.pendingResolve;
+        tournamentState.pendingResolve = null;
+        tournamentState.pendingReject = null;
+        resolve(snapshot);
+      }
+      return;
+    }
+
+    const winner = snapshot.actors.find((actor) => actor.id === snapshot.winnerId);
     overlay.classList.remove("hidden");
     overlay.innerHTML = winner
       ? `
@@ -1464,7 +2489,6 @@ const game = new ArenaGame(canvas, {
         <h2>本局同归于尽</h2>
       `;
 
-    renderRecordingFrame(snapshot);
     scheduleCanvasRecordingStop();
   },
 });
@@ -1472,6 +2496,11 @@ const game = new ArenaGame(canvas, {
 startButton.addEventListener("click", () => {
   resumeAudio();
   startMatch();
+});
+
+tournamentStartButton?.addEventListener("click", () => {
+  resumeAudio();
+  startTournament();
 });
 
 recordButton?.addEventListener("click", () => {
@@ -1484,6 +2513,46 @@ recordButton?.addEventListener("click", () => {
   startMatch({ record: true });
 });
 
+tournamentRecordButton?.addEventListener("click", () => {
+  resumeAudio();
+  if (recordingState.active) {
+    stopRecordedMatch();
+    return;
+  }
+  startTournament({ record: true });
+});
+
+modeClassicButton?.addEventListener("click", () => {
+  if (tournamentState.active) {
+    return;
+  }
+  setAppMode("classic");
+});
+
+modeTournamentButton?.addEventListener("click", () => {
+  if (tournamentState.active) {
+    return;
+  }
+  setAppMode("tournament");
+});
+
+tournamentDrawButton?.addEventListener("click", async () => {
+  if (tournamentState.active || !canStartTournament()) {
+    return;
+  }
+  generateTournamentGroups();
+  await playTournamentScene({
+    type: "draw",
+    eyebrow: "RANDOM DRAW",
+    title: "赛事抽签分组",
+    subtitle: "16 名角色随机分成 8 个双人小组",
+    groups: tournamentState.groups,
+    pool: getTournamentRosterPool(),
+  }, TOURNAMENT_DRAW_MS);
+  tournamentState.currentRoundLabel = "抽签完成";
+  renderTournamentPanel();
+});
+
 resetButton.addEventListener("click", () => {
   resetCharacterValues(selectedId);
   clearOverrides(selectedId);
@@ -1493,15 +2562,21 @@ resetButton.addEventListener("click", () => {
 
 selectAllButton.addEventListener("click", () => {
   selectedRosterIds = new Set(CHARACTER_LIBRARY.map((character) => character.id));
+  invalidateTournamentBracket();
   renderRoster();
 });
 
 clearRosterButton.addEventListener("click", () => {
   selectedRosterIds = new Set([selectedId]);
+  invalidateTournamentBracket();
   renderRoster();
 });
 
 openRosterButton.addEventListener("click", () => {
+  openRosterModal();
+});
+
+openRosterButtonTournament?.addEventListener("click", () => {
   openRosterModal();
 });
 
@@ -1562,5 +2637,7 @@ renderEditor();
 renderScoreboard(null);
 syncDuelTimeInput();
 updateHud(null);
+setAppMode("classic");
+renderTournamentPanel();
 initDb();
 

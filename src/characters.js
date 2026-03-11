@@ -1693,6 +1693,7 @@ export const CHARACTER_LIBRARY = [
                 color: "#4dff8e",
                 attacker: actor,
                 ignoreInvulnerable: true,
+                redirected: true, // 百鬼夜行直接作用于本体，绕过幻镜拟态/偷天换日的伤害转移
               });
             }
           }

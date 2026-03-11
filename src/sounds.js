@@ -510,71 +510,71 @@ const ultimateSounds = {
 
 // ─── 落雷与爆炸命中音效 ────────────────────────────────────────────────────────
 
-// 雷电落地：超短冲击 + 高频电弧
+// 雷电落地：尖锐霹雳 + 低频震荡
 function playLightningImpact() {
-  if (throttle("lightningImpact", 120)) return;
+  if (throttle("lightningImpact", 60)) return;
   const c = getCtx(); const t = c.currentTime;
   const master = getMaster(c);
-  // 瞬间冲击噪声（低频轰）
-  const n = makeNoise(c, 0.06);
-  const f = c.createBiquadFilter();
-  f.type = "lowpass"; f.frequency.value = 900;
-  const g = gainNode(c, 0.95);
-  g.gain.setValueAtTime(0.95, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-  n.connect(f); f.connect(g); g.connect(master);
-  n.start(t); n.stop(t + 0.07);
-  // 高频电弧噼啪
-  const n2 = makeNoise(c, 0.18);
-  const f2 = c.createBiquadFilter();
-  f2.type = "bandpass"; f2.frequency.value = 6500; f2.Q.value = 0.5;
-  const g2 = gainNode(c, 0.6);
-  g2.gain.setValueAtTime(0.6, t);
-  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
-  n2.connect(f2); f2.connect(g2); g2.connect(master);
-  n2.start(t); n2.stop(t + 0.19);
-  // 低沉余震
-  const o = osc(c, "sine", 90);
-  o.frequency.exponentialRampToValueAtTime(35, t + 0.22);
-  const go = gainNode(c, 0.5);
-  go.gain.setValueAtTime(0.5, t);
-  go.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-  o.connect(go); go.connect(master);
-  o.start(t); o.stop(t + 0.23);
-}
-
-// 榴弹爆炸：浑厚低频冲击波
-function playBombExplosion() {
-  if (throttle("bombExplosion", 80)) return;
-  const c = getCtx(); const t = c.currentTime;
-  const master = getMaster(c);
-  // 低频爆炸体
-  const n = makeNoise(c, 0.35);
-  const f = c.createBiquadFilter();
-  f.type = "lowpass"; f.frequency.value = 320;
-  const g = gainNode(c, 0.9);
-  g.gain.setValueAtTime(0.9, t);
-  g.gain.exponentialRampToValueAtTime(0.28, t + 0.04);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-  n.connect(f); f.connect(g); g.connect(master);
-  n.start(t); n.stop(t + 0.36);
-  // 冲击波中高频
+  // 全频噪声冲击（模拟雷击瞬间）
+  const n = makeNoise(c, 0.25);
+  const g = gainNode(c, 1.2);
+  g.gain.setValueAtTime(1.2, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+  n.connect(g); g.connect(master);
+  n.start(t); n.stop(t + 0.26);
+  // 电弧嗡鸣（方波，穿透力强）
+  const o = osc(c, "square", 160);
+  o.frequency.exponentialRampToValueAtTime(42, t + 0.18);
+  const go = gainNode(c, 0.7);
+  go.gain.setValueAtTime(0.7, t);
+  go.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+  const fLow = c.createBiquadFilter();
+  fLow.type = "lowpass"; fLow.frequency.value = 1800;
+  o.connect(fLow); fLow.connect(go); go.connect(master);
+  o.start(t); o.stop(t + 0.21);
+  // 高频电弧裂声（2000-4000Hz 可被大多数扬声器还原）
   const n2 = makeNoise(c, 0.12);
   const f2 = c.createBiquadFilter();
-  f2.type = "bandpass"; f2.frequency.value = 1400; f2.Q.value = 0.8;
-  const g2 = gainNode(c, 0.55);
-  g2.gain.setValueAtTime(0.55, t);
+  f2.type = "bandpass"; f2.frequency.value = 3000; f2.Q.value = 0.8;
+  const g2 = gainNode(c, 1.0);
+  g2.gain.setValueAtTime(1.0, t);
   g2.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
   n2.connect(f2); f2.connect(g2); g2.connect(master);
   n2.start(t); n2.stop(t + 0.13);
-  // 低沉轰鸣下扫
-  const o = osc(c, "sine", 85);
-  o.frequency.exponentialRampToValueAtTime(28, t + 0.3);
-  const go = gainNode(c, 0.65);
-  go.gain.setValueAtTime(0.65, t);
-  go.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
-  o.connect(go); go.connect(master);
-  o.start(t); o.stop(t + 0.31);
+}
+
+// 榴弹爆炸：浑厚爆炸冲击
+function playBombExplosion() {
+  if (throttle("bombExplosion", 60)) return;
+  const c = getCtx(); const t = c.currentTime;
+  const master = getMaster(c);
+  // 全频冲击噪声（快速衰减，有穿透力）
+  const n = makeNoise(c, 0.4);
+  const g = gainNode(c, 1.3);
+  g.gain.setValueAtTime(1.3, t);
+  g.gain.exponentialRampToValueAtTime(0.18, t + 0.05);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+  n.connect(g); g.connect(master);
+  n.start(t); n.stop(t + 0.41);
+  // 爆炸中频体（500-1200Hz，大多数设备可还原）
+  const n2 = makeNoise(c, 0.2);
+  const f2 = c.createBiquadFilter();
+  f2.type = "bandpass"; f2.frequency.value = 700; f2.Q.value = 1.2;
+  const g2 = gainNode(c, 1.0);
+  g2.gain.setValueAtTime(1.0, t);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+  n2.connect(f2); f2.connect(g2); g2.connect(master);
+  n2.start(t); n2.stop(t + 0.21);
+  // 爆炸音调（锯齿波下扫，增加厚重感）
+  const o = osc(c, "sawtooth", 200);
+  o.frequency.exponentialRampToValueAtTime(45, t + 0.22);
+  const fSaw = c.createBiquadFilter();
+  fSaw.type = "lowpass"; fSaw.frequency.value = 1200;
+  const go = gainNode(c, 0.8);
+  go.gain.setValueAtTime(0.8, t);
+  go.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+  o.connect(fSaw); fSaw.connect(go); go.connect(master);
+  o.start(t); o.stop(t + 0.26);
 }
 
 // ─── 对外统一接口 ──────────────────────────────────────────────────────────────

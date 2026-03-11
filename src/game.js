@@ -3860,7 +3860,7 @@ export class ArenaGame {
       lifetime: config.lifetime,
       age: 0,
       disarm: config.disarm ?? false,
-      capturedActorIds: new Set(),
+      capturedActorIds: new Map(), // actorId → { orbitAngle }
     });
   }
 
@@ -3895,14 +3895,25 @@ export class ArenaGame {
 
         // 新捕获（未被其他龙卷风捕获时）
         if (!actor.state.capturedByTornadoId && inRange) {
-          tornado.capturedActorIds.add(actor.id);
+          const startAngle = Math.random() * Math.PI * 2;
+          tornado.capturedActorIds.set(actor.id, { orbitAngle: startAngle });
           actor.state.capturedByTornadoId = tornado.id;
         }
 
         if (tornado.capturedActorIds.has(actor.id)) {
-          // 跟随龙卷风
-          actor.position = { ...tornado.position };
-          actor.velocity = { ...tornado.velocity };
+          // 环绕龙卷风旋转
+          const info = tornado.capturedActorIds.get(actor.id);
+          info.orbitAngle += dt * 4.2;
+          const orbitR = tornado.radius * 0.55;
+          actor.position = {
+            x: tornado.position.x + Math.cos(info.orbitAngle) * orbitR,
+            y: tornado.position.y + Math.sin(info.orbitAngle) * orbitR,
+          };
+          // 速度设为切线方向，释放时自然飞出
+          actor.velocity = {
+            x: -Math.sin(info.orbitAngle) * orbitR * 4.2 + tornado.velocity.x,
+            y:  Math.cos(info.orbitAngle) * orbitR * 4.2 + tornado.velocity.y,
+          };
 
           // 缴械效果
           if (tornado.disarm) {
@@ -3920,7 +3931,7 @@ export class ArenaGame {
     // 移除到期的龙卷风，释放被捕获者
     this.state.tornadoes = this.state.tornadoes.filter((tornado) => {
       if (tornado.age < tornado.lifetime) return true;
-      for (const actorId of tornado.capturedActorIds) {
+      for (const [actorId] of tornado.capturedActorIds) {
         const actor = this.state.actors.find((a) => a.id === actorId);
         if (actor && actor.alive) {
           actor.state.capturedByTornadoId = null;

@@ -898,7 +898,7 @@ export const CHARACTER_LIBRARY = [
   }),
   defineCharacter({
     id: "phantom-mirror",
-    name: "欺诈师",
+    name: "分身师",
     title: "分身迷惑",
     color: "#aa88ee",
     description: "每次碰撞敌方小球或撞墙后都有概率在原地留下一个静止分身，分身被撞击3次后爆炸造成范围伤害，最多同时存在3个。大招激活所有分身向最近敌人高速冲撞。",

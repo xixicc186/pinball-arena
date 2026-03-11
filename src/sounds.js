@@ -58,6 +58,17 @@ function getMaster(c) {
   return masterGain;
 }
 
+// 录制用音频流：将 masterGain 同时接入 MediaStreamDestination
+let streamDest = null;
+export function getAudioStream() {
+  const c = getCtx();
+  if (!streamDest) {
+    streamDest = c.createMediaStreamDestination();
+    getMaster(c).connect(streamDest);
+  }
+  return streamDest.stream;
+}
+
 // ─── 通用碰撞与弹墙音效 ────────────────────────────────────────────────────────
 
 function playBallCollision(impactSpeed = 200) {

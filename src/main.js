@@ -7,7 +7,7 @@
 } from "./characters.js";
 import { ArenaGame } from "./game.js";
 import { clearOverrides, loadAllOverrides, saveOverrides } from "./db.js";
-import { playSound, resumeAudio } from "./sounds.js";
+import { getAudioStream, playSound, resumeAudio } from "./sounds.js";
 
 const rosterElement = document.getElementById("roster");
 const rosterStatusElement = document.getElementById("roster-status");
@@ -1200,6 +1200,7 @@ function startCanvasRecording() {
   try {
     const mimeType = getRecordingMimeType();
     const stream = canvas.captureStream(RECORDING_FPS);
+    getAudioStream().getAudioTracks().forEach((track) => stream.addTrack(track));
     const options = {
       videoBitsPerSecond: RECORDING_BITS_PER_SECOND,
     };

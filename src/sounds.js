@@ -472,9 +472,78 @@ const ultimateSounds = {
   },
 };
 
+// ─── 落雷与爆炸命中音效 ────────────────────────────────────────────────────────
+
+// 雷电落地：超短冲击 + 高频电弧
+function playLightningImpact() {
+  if (throttle("lightningImpact", 120)) return;
+  const c = getCtx(); const t = c.currentTime;
+  const master = getMaster(c);
+  // 瞬间冲击噪声（低频轰）
+  const n = makeNoise(c, 0.06);
+  const f = c.createBiquadFilter();
+  f.type = "lowpass"; f.frequency.value = 900;
+  const g = gainNode(c, 0.95);
+  g.gain.setValueAtTime(0.95, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+  n.connect(f); f.connect(g); g.connect(master);
+  n.start(t); n.stop(t + 0.07);
+  // 高频电弧噼啪
+  const n2 = makeNoise(c, 0.18);
+  const f2 = c.createBiquadFilter();
+  f2.type = "bandpass"; f2.frequency.value = 6500; f2.Q.value = 0.5;
+  const g2 = gainNode(c, 0.6);
+  g2.gain.setValueAtTime(0.6, t);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+  n2.connect(f2); f2.connect(g2); g2.connect(master);
+  n2.start(t); n2.stop(t + 0.19);
+  // 低沉余震
+  const o = osc(c, "sine", 90);
+  o.frequency.exponentialRampToValueAtTime(35, t + 0.22);
+  const go = gainNode(c, 0.5);
+  go.gain.setValueAtTime(0.5, t);
+  go.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+  o.connect(go); go.connect(master);
+  o.start(t); o.stop(t + 0.23);
+}
+
+// 榴弹爆炸：浑厚低频冲击波
+function playBombExplosion() {
+  if (throttle("bombExplosion", 80)) return;
+  const c = getCtx(); const t = c.currentTime;
+  const master = getMaster(c);
+  // 低频爆炸体
+  const n = makeNoise(c, 0.35);
+  const f = c.createBiquadFilter();
+  f.type = "lowpass"; f.frequency.value = 320;
+  const g = gainNode(c, 0.9);
+  g.gain.setValueAtTime(0.9, t);
+  g.gain.exponentialRampToValueAtTime(0.28, t + 0.04);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+  n.connect(f); f.connect(g); g.connect(master);
+  n.start(t); n.stop(t + 0.36);
+  // 冲击波中高频
+  const n2 = makeNoise(c, 0.12);
+  const f2 = c.createBiquadFilter();
+  f2.type = "bandpass"; f2.frequency.value = 1400; f2.Q.value = 0.8;
+  const g2 = gainNode(c, 0.55);
+  g2.gain.setValueAtTime(0.55, t);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  n2.connect(f2); f2.connect(g2); g2.connect(master);
+  n2.start(t); n2.stop(t + 0.13);
+  // 低沉轰鸣下扫
+  const o = osc(c, "sine", 85);
+  o.frequency.exponentialRampToValueAtTime(28, t + 0.3);
+  const go = gainNode(c, 0.65);
+  go.gain.setValueAtTime(0.65, t);
+  go.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+  o.connect(go); go.connect(master);
+  o.start(t); o.stop(t + 0.31);
+}
+
 // ─── 对外统一接口 ──────────────────────────────────────────────────────────────
 
-export function playSound({ type, characterId, impactSpeed }) {
+export function playSound({ type, characterId, impactSpeed, strikeType }) {
   try {
     resumeAudio();
     if (type === "ballCollision") {
@@ -485,6 +554,12 @@ export function playSound({ type, characterId, impactSpeed }) {
       basicAttackSounds[characterId]?.();
     } else if (type === "ultimate") {
       ultimateSounds[characterId]?.();
+    } else if (type === "strikeExplode") {
+      if (strikeType === "lightning") {
+        playLightningImpact();
+      } else {
+        playBombExplosion();
+      }
     }
   } catch {
     // 音频错误不应影响游戏运行

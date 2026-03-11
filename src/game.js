@@ -1463,6 +1463,7 @@ export class ArenaGame {
     strike.maxFlashTime = strike.strikeType === "lightning" ? 0.42 : 0.22;
     strike.flashTime = strike.maxFlashTime;
     this.shake(18, 0.22);
+    this.callbacks.onSound?.({ type: "strikeExplode", strikeType: strike.strikeType ?? "bomb" });
 
     const owner = this.findActorById(strike.ownerId);
     for (const actor of this.state.actors) {

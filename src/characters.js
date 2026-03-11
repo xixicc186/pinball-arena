@@ -1090,7 +1090,7 @@ export const CHARACTER_LIBRARY = [
     name: "盾狗",
     title: "防守反击",
     color: "#f5d070",
-    description: "碰撞三次充能金色护盾，护盾期间免疫所有伤害。大招召唤等同自身半径长度的环绕圣剑，再次释放则延长圣剑。",
+    description: "碰撞两次充能金色护盾，护盾期间免疫所有伤害。大招召唤等同自身半径长度的环绕圣剑，再次释放则延长圣剑。",
     visual: { motif: "bastion" },
     stats: {
       maxHp: 140,
@@ -1102,7 +1102,7 @@ export const CHARACTER_LIBRARY = [
     tuning: {
       basic: {
         shieldDuration: 5,
-        chargesNeeded: 3,
+        chargesNeeded: 2,
       },
       ultimate: {
         swordDamage: 8,
@@ -1178,7 +1178,7 @@ export const CHARACTER_LIBRARY = [
     name: "绝对零度",
     title: "极致减速",
     color: "#88ccff",
-    description: "不断向四个随机方向散射穿透型冰刺，每次命中叠加一层减速，叠满3层冻结敌人1.5秒。大招连续释放4次平A，快速堆叠冻结层数。",
+    description: "不断向八个随机方向散射穿透型冰刺，每次命中叠加一层减速，叠满3层冻结敌人1.5秒。大招连续释放4次平A，快速堆叠冻结层数。",
     visual: { motif: "frost" },
     stats: {
       maxHp: 120,
@@ -1449,7 +1449,7 @@ export const CHARACTER_LIBRARY = [
     name: "风暴",
     title: "气象台",
     color: "#7ea4b8",
-    description: "全场搅局者。发射随机游荡的气旋捕获并折磨敌人；终极风暴同时释放三个巨型龙卷风，缴械所有被卷入者。",
+    description: "全场搅局者。发射游荡气旋捕获并缴械敌人，被卷入者持续受到撕裂伤害；终极风暴同时释放三个巨型龙卷风，体型与速度大幅提升。",
     stats: {
       maxHp: 100,
       speed: 180,

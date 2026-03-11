@@ -337,6 +337,30 @@ const basicAttackSounds = {
     lfo.start(t); o.start(t); lfo.stop(t + 0.5); o.stop(t + 0.47);
   },
 
+  // 幻镜：拟态窃取 — 镜面滑过声
+  "mirror-mimic"() {
+    if (throttle("ba:mirror-mimic", 4500)) return;
+    const c = getCtx(); const t = c.currentTime;
+    const master = getMaster(c);
+    // 高频扫频（镜面反射感）
+    const o = osc(c, "sine", 2400);
+    o.frequency.exponentialRampToValueAtTime(900, t + 0.18);
+    const g = gainNode(c, 0.0);
+    g.gain.linearRampToValueAtTime(0.22, t + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t + 0.24);
+    // 轻微噪声拖尾
+    const n = makeNoise(c, 0.08);
+    const nf = c.createBiquadFilter();
+    nf.type = "bandpass"; nf.frequency.value = 3200; nf.Q.value = 2;
+    const gn = gainNode(c, 0.12);
+    gn.gain.setValueAtTime(0.12, t + 0.05);
+    gn.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    n.connect(nf); nf.connect(gn); gn.connect(master);
+    n.start(t + 0.05); n.stop(t + 0.3);
+  },
+
   // 绝对零度：寒冰散射 — 冰晶碎裂
   "frost-core"() {
     if (throttle("ba:frost-core", 280)) return;
@@ -642,6 +666,31 @@ const ultimateSounds = {
     gn.gain.exponentialRampToValueAtTime(0.001, t + 0.88);
     n.connect(lp); lp.connect(gn); gn.connect(master);
     n.start(t); n.stop(t + 0.9);
+  },
+
+  // 幻镜：偷天换日 — 镜面震荡+宏大滑音
+  "mirror-mimic"() {
+    const c = getCtx(); const t = c.currentTime;
+    const master = getMaster(c);
+    // 下行扫频（世界被"替换"的感觉）
+    [1800, 1400, 1000, 700].forEach((freq, i) => {
+      const o = osc(c, "sine", freq);
+      o.frequency.exponentialRampToValueAtTime(freq * 0.45, t + 0.5 + i * 0.06);
+      const g = gainNode(c, 0.0);
+      g.gain.linearRampToValueAtTime(0.2, t + i * 0.06 + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.55 + i * 0.06);
+      o.connect(g); g.connect(master);
+      o.start(t + i * 0.06); o.stop(t + 0.62 + i * 0.06);
+    });
+    // 宽带噪声冲击（镜面破碎感）
+    const n = makeNoise(c, 0.5);
+    const nf = c.createBiquadFilter();
+    nf.type = "bandpass"; nf.frequency.value = 2000; nf.Q.value = 0.6;
+    const gn = gainNode(c, 0.38);
+    gn.gain.setValueAtTime(0.38, t);
+    gn.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+    n.connect(nf); nf.connect(gn); gn.connect(master);
+    n.start(t); n.stop(t + 0.56);
   },
 
   "frost-core"() {

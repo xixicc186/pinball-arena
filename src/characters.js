@@ -1655,6 +1655,86 @@ export const CHARACTER_LIBRARY = [
       },
     },
   }),
+
+  defineCharacter({
+    id: "mirror-mimic",
+    name: "幻镜",
+    title: "替身使者",
+    color: "#78c8f0",
+    description: "自身生命极低。平A每5秒随机拟态一名存活敌人，持续4秒，期间自身所受伤害转化为真实伤害直接施加给被拟态目标。大招（需3精元）锁定血量最高的角色为宿主，场上所有角色外形变为宿主，非宿主所受伤害全部转移至宿主，持续5秒。",
+    stats: {
+      maxHp: 100,
+      speed: 210,
+      maxEssence: 3,
+      attackRange: 999,
+      radius: 18,
+    },
+    tuning: {
+      basic: {
+        mimicInterval: 5,
+        mimicDuration: 4,
+      },
+      ult: {
+        duration: 5,
+      },
+    },
+    editorSections: [
+      {
+        title: "基础属性",
+        fields: [
+          editableField("stats.maxHp", "生命值", { min: 1, step: 1 }),
+          editableField("stats.speed", "移动速度", { min: 20, step: 1 }),
+          editableField("stats.maxEssence", "大招点数", { min: 1, step: 1 }),
+        ],
+      },
+      {
+        title: "平A · 拟态窃取",
+        fields: [
+          editableField("tuning.basic.mimicInterval", "触发间隔", { min: 1, step: 0.5, unit: "s" }),
+          editableField("tuning.basic.mimicDuration", "拟态持续", { min: 0.5, step: 0.5, unit: "s" }),
+        ],
+      },
+      {
+        title: "大招 · 偷天换日",
+        fields: [
+          editableField("tuning.ult.duration", "持续时间", { min: 1, step: 0.5, unit: "s" }),
+        ],
+      },
+    ],
+    onSpawn({ actor }) {
+      actor.state.mimicTargetId = null;
+    },
+    basicAttack: {
+      name: "拟态窃取",
+      triggers: [{ type: "interval", interval: 5 }],
+      execute({ actor, api, enemies }) {
+        const t = actor.definition.tuning.basic;
+        const living = enemies.filter((e) => e.alive);
+        if (!living.length) return;
+        const target = living[Math.floor(Math.random() * living.length)];
+        actor.state.mimicTargetId = target.id;
+        api.emitText("拟态！", actor.position, "#78c8f0");
+        api.schedule(t.mimicDuration, ({ actor }) => {
+          actor.state.mimicTargetId = null;
+        });
+      },
+    },
+    ultimate: {
+      name: "偷天换日",
+      execute({ actor, api, game }) {
+        const t = actor.definition.tuning.ult;
+        const all = game.state.actors.filter((a) => a.alive);
+        if (!all.length) return;
+        const host = all.reduce((best, a) => (a.hp > best.hp ? a : best), all[0]);
+        game.state.mirrorUlt = { hostId: host.id };
+        api.announce(`偷天换日！所有伤害归于 ${host.name}！`);
+        api.emitText("偷天换日", actor.position, "#c8f0ff");
+        api.schedule(t.duration, ({ game }) => {
+          game.state.mirrorUlt = null;
+        });
+      },
+    },
+  }),
 ];
 
 const CHARACTER_DEFAULTS = Object.fromEntries(

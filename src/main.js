@@ -7,7 +7,7 @@
 } from "./characters.js";
 import { ArenaGame } from "./game.js";
 import { clearOverrides, loadAllOverrides, saveOverrides, loadAllIntros, saveIntro } from "./db.js";
-import { getAudioStream, playSound, resumeAudio } from "./sounds.js";
+import { getAudioStream, playSound, resumeAudio, resetAudioStream } from "./sounds.js";
 
 const rosterElement = document.getElementById("roster");
 const rosterStatusElement = document.getElementById("roster-status");
@@ -19,6 +19,8 @@ const modeClassicButton = document.getElementById("mode-classic-button");
 const modeTournamentButton = document.getElementById("mode-tournament-button");
 const classicModePanel = document.getElementById("classic-mode-panel");
 const tournamentModePanel = document.getElementById("tournament-mode-panel");
+const tournamentFormatTeamButton = document.getElementById("tournament-format-team-button");
+const tournamentFormatSoloButton = document.getElementById("tournament-format-solo-button");
 const tournamentPanel = document.getElementById("tournament-panel");
 const tournamentDrawButton = document.getElementById("tournament-draw-button");
 const tournamentStartButton = document.getElementById("tournament-start-button");
@@ -53,7 +55,38 @@ const RECORDING_END_HOLD_MS = 2500;
 const ENTRY_CARD_STAGGER_MS = 200;
 const ENTRY_HOLD_MS = 1800;
 const ENTRY_OUTRO_MS = 1100;
-const TOURNAMENT_REQUIRED_ROSTER = 16;
+const TOURNAMENT_FORMATS = {
+  team: {
+    key: "team",
+    title: "组队赛",
+    requiredRoster: 16,
+    groupSize: 2,
+    lineupLabel: "双人小组",
+    stageHeading: "双人组",
+    finalLabel: "决胜组",
+    drawTitle: "赛事抽签分组",
+    drawSubtitle: "16 名角色随机分成 8 个双人小组",
+    summaryIdle: "点击“随机抽签分组”生成 8 个双人小组，再开始整届赛事。",
+    summaryReady: "已生成 8 个双人小组，赛程按固定半区推进。",
+    championTitle: "决胜组出线",
+    championSubtitle: "成为本届冠军组",
+  },
+  solo: {
+    key: "solo",
+    title: "个人战",
+    requiredRoster: 8,
+    groupSize: 1,
+    lineupLabel: "个人选手",
+    stageHeading: "个人",
+    finalLabel: "决胜局",
+    drawTitle: "个人战抽签",
+    drawSubtitle: "8 名角色随机进入个人战赛程",
+    summaryIdle: "点击“随机抽签分组”生成 8 名个人选手，再开始整届个人战。",
+    summaryReady: "已生成 8 名个人选手，赛程按固定半区推进。",
+    championTitle: "冠军诞生",
+    championSubtitle: "赢下本届个人战",
+  },
+};
 const TOURNAMENT_DRAW_MS = 3200;
 const TOURNAMENT_BRACKET_HOLD_MS = 1800;
 const TOURNAMENT_MATCH_OVERLAY_MS = 1600;
@@ -64,6 +97,7 @@ const TOURNAMENT_CHAMPION_HOLD_MS = 2600;
 let selectedId = CHARACTER_LIBRARY[0].id;
 let selectedRosterIds = new Set();
 let appMode = "classic";
+let tournamentFormat = "team";
 const matchSettings = {
   includeEdgeHazards: true,
   duelTime: DEFAULT_DUEL_TIME,
@@ -81,6 +115,7 @@ const tournamentState = {
   cancelled: false,
   sceneStopper: null,
   latestResult: null,
+  format: "team",
 };
 const recordingState = {
   active: false,
@@ -107,6 +142,7 @@ const entryState = {
   animStart: 0,
 };
 const battleFeedItems = [];
+const tournamentPreviewBuffers = new Map();
 
 // 出场介绍文字覆盖（从 Supabase 加载，key = characterId）
 const introCache = {};
@@ -145,8 +181,12 @@ function getSelectedCharacters() {
     .filter(Boolean);
 }
 
+function getTournamentConfig(format = tournamentFormat) {
+  return TOURNAMENT_FORMATS[format] ?? TOURNAMENT_FORMATS.team;
+}
+
 function canStartTournament() {
-  return getRosterIds().length === TOURNAMENT_REQUIRED_ROSTER;
+  return getRosterIds().length === getTournamentConfig().requiredRoster;
 }
 
 function getCurrentRecordButton() {
@@ -202,12 +242,13 @@ function canStartMatch() {
 function updateRosterStatus() {
   const activeStartButton = getCurrentStartButton();
   const selectedCount = getRosterIds().length;
+  const tournamentConfig = getTournamentConfig();
   const classicText = selectedCount >= 2
     ? `已选择 ${selectedCount} 名出战角色`
     : `已选择 ${selectedCount} 名出战角色，至少需要 2 名才能开始`;
-  const tournamentText = selectedCount === TOURNAMENT_REQUIRED_ROSTER
-    ? `已选择 ${selectedCount} 名出战角色，已满足赛事模式人数要求`
-    : `已选择 ${selectedCount} 名出战角色，赛事模式需要恰好 ${TOURNAMENT_REQUIRED_ROSTER} 名`;
+  const tournamentText = selectedCount === tournamentConfig.requiredRoster
+    ? `已选择 ${selectedCount} 名出战角色，已满足${tournamentConfig.title}人数要求`
+    : `已选择 ${selectedCount} 名出战角色，${tournamentConfig.title}需要恰好 ${tournamentConfig.requiredRoster} 名`;
 
   rosterStatusElement.textContent = classicText;
   tournamentStatusElement.textContent = tournamentText;
@@ -224,7 +265,7 @@ function updateRosterStatus() {
   startButton.disabled = !canStartMatch() || recordingState.active || tournamentState.active;
   tournamentStartButton.disabled = !canStartMatch() || recordingState.active || tournamentState.active;
   activeStartButton.textContent = appMode === "tournament"
-    ? (canStartMatch() ? "开始赛事" : `需要 ${TOURNAMENT_REQUIRED_ROSTER} 名角色`)
+    ? (canStartMatch() ? `开始${tournamentConfig.title}` : `需要 ${tournamentConfig.requiredRoster} 名角色`)
     : (canStartMatch() ? "开始出战" : "至少选择 2 名角色");
   if (appMode === "tournament") {
     startButton.textContent = "开始出战";
@@ -644,7 +685,8 @@ function getGroupMatchStatus(groupId) {
   return "pending";
 }
 
-function buildTournamentRounds(groups) {
+function buildTournamentRounds(groups, format = tournamentFormat) {
+  const config = getTournamentConfig(format);
   const createMatch = (id, label, roundLabel, leftRef, rightRef) => ({
     id,
     label,
@@ -676,9 +718,9 @@ function buildTournamentRounds(groups) {
     },
     {
       key: "final",
-      label: "决胜组",
+      label: config.finalLabel,
       matches: [
-        createMatch("final-1", "决胜战", "决胜组", { type: "match", id: "sf-1" }, { type: "match", id: "sf-2" }),
+        createMatch("final-1", "决胜战", config.finalLabel, { type: "match", id: "sf-1" }, { type: "match", id: "sf-2" }),
       ],
     },
   ];
@@ -695,6 +737,7 @@ function getTournamentSourceSlotIds(match) {
 }
 
 function getTournamentBracketLayout() {
+  const config = getTournamentConfig();
   const stageX = [0.11, 0.39, 0.67, 0.89];
   const groupY = Array.from({ length: 8 }, (_, index) => 0.11 + index * 0.11);
   const quarterY = [0, 1, 2, 3].map((index) => (groupY[index * 2] + groupY[index * 2 + 1]) / 2);
@@ -723,10 +766,10 @@ function getTournamentBracketLayout() {
     stageX,
     slots,
     headings: [
-      { label: "小组", x: stageX[0] },
+      { label: config.stageHeading, x: stageX[0] },
       { label: "8进4", x: stageX[1] },
       { label: "4进2", x: stageX[2] },
-      { label: "决胜组", x: stageX[3] },
+      { label: config.finalLabel, x: stageX[3] },
     ],
   };
 }
@@ -770,14 +813,15 @@ function getWinningSourceSlotId(match, winnerGroupId) {
 }
 
 function generateTournamentGroups() {
-  const characters = shuffle(getSelectedCharacters()).slice(0, TOURNAMENT_REQUIRED_ROSTER);
+  const config = getTournamentConfig();
+  const characters = shuffle(getSelectedCharacters()).slice(0, config.requiredRoster);
   const groups = [];
-  for (let index = 0; index < characters.length; index += 2) {
-    const groupIndex = index / 2;
+  for (let index = 0; index < characters.length; index += config.groupSize) {
+    const groupIndex = index / config.groupSize;
     groups.push({
       id: `group-${groupIndex + 1}`,
       label: `${String.fromCharCode(65 + groupIndex)}组`,
-      members: characters.slice(index, index + 2).map((character) => ({
+      members: characters.slice(index, index + config.groupSize).map((character) => ({
         id: character.id,
         name: character.name,
         title: character.title,
@@ -787,12 +831,13 @@ function generateTournamentGroups() {
   }
 
   tournamentState.groups = groups;
-  tournamentState.rounds = buildTournamentRounds(groups);
+  tournamentState.rounds = buildTournamentRounds(groups, tournamentFormat);
   tournamentState.generated = true;
   tournamentState.championGroupId = null;
   tournamentState.latestResult = null;
   tournamentState.currentMatchId = null;
   tournamentState.currentRoundLabel = "抽签完成";
+  tournamentState.format = tournamentFormat;
   renderTournamentPanel();
   return groups;
 }
@@ -806,15 +851,115 @@ function getTournamentRosterPool() {
   }));
 }
 
+function setTournamentFormat(format) {
+  if (!TOURNAMENT_FORMATS[format] || tournamentState.active || format === tournamentFormat) {
+    return;
+  }
+  tournamentFormat = format;
+  tournamentState.format = format;
+  invalidateTournamentBracket();
+  updateRosterStatus();
+  updateRecordButton();
+}
+
+function getTournamentPreviewBuffer(size) {
+  const key = `${size}`;
+  if (!tournamentPreviewBuffers.has(key)) {
+    const buffer = document.createElement("canvas");
+    buffer.width = size;
+    buffer.height = size;
+    tournamentPreviewBuffers.set(key, buffer);
+  }
+  return tournamentPreviewBuffers.get(key);
+}
+
+function drawFallbackTournamentBall(ctx, x, y, diameter, color = "#7a7a7a", alpha = 1) {
+  const radius = diameter / 2;
+  const gradient = ctx.createRadialGradient(
+    x - radius * 0.32,
+    y - radius * 0.34,
+    radius * 0.14,
+    x,
+    y,
+    radius,
+  );
+  gradient.addColorStop(0, "#ffffff");
+  gradient.addColorStop(0.38, color);
+  gradient.addColorStop(1, "rgba(10,10,10,0.92)");
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.16)";
+  ctx.lineWidth = Math.max(2, diameter * 0.05);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawTournamentBallPreview(ctx, x, y, diameter, member, alpha = 1, elapsed = 0) {
+  const character = member?.id ? getCharacterById(member.id) : null;
+  if (!character) {
+    drawFallbackTournamentBall(ctx, x, y, diameter, member?.color, alpha);
+    return;
+  }
+
+  const bufferSize = Math.max(64, Math.round(diameter * 2));
+  const buffer = getTournamentPreviewBuffer(bufferSize);
+  const bufferCtx = buffer.getContext("2d");
+  bufferCtx.clearRect(0, 0, buffer.width, buffer.height);
+  game.renderBallPreview(bufferCtx, character, elapsed);
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(buffer, x - diameter / 2, y - diameter / 2, diameter, diameter);
+  ctx.restore();
+}
+
+function renderTournamentBallCanvases(root = document) {
+  root.querySelectorAll("canvas[data-ball-character-id]").forEach((ballCanvas) => {
+    const characterId = ballCanvas.dataset.ballCharacterId;
+    const size = Number(ballCanvas.dataset.ballSize || 58);
+    const dpr = window.devicePixelRatio || 1;
+    const pixelSize = Math.max(1, Math.round(size * dpr));
+    if (ballCanvas.width !== pixelSize || ballCanvas.height !== pixelSize) {
+      ballCanvas.width = pixelSize;
+      ballCanvas.height = pixelSize;
+      ballCanvas.style.width = `${size}px`;
+      ballCanvas.style.height = `${size}px`;
+    }
+    const ctx = ballCanvas.getContext("2d");
+    ctx.clearRect(0, 0, ballCanvas.width, ballCanvas.height);
+    const character = getCharacterById(characterId);
+    if (!character) {
+      drawFallbackTournamentBall(ctx, ballCanvas.width / 2, ballCanvas.height / 2, ballCanvas.width * 0.92);
+      return;
+    }
+    game.renderBallPreview(ctx, character, performance.now() / 1000);
+  });
+}
+
 function renderTournamentPanel() {
   tournamentPanel.classList.toggle("hidden", appMode !== "tournament");
   if (appMode !== "tournament") {
     return;
   }
 
+  const config = getTournamentConfig();
+  tournamentFormatTeamButton?.classList.toggle("active", tournamentFormat === "team");
+  tournamentFormatSoloButton?.classList.toggle("active", tournamentFormat === "solo");
+  tournamentFormatTeamButton?.setAttribute("aria-pressed", tournamentFormat === "team" ? "true" : "false");
+  tournamentFormatSoloButton?.setAttribute("aria-pressed", tournamentFormat === "solo" ? "true" : "false");
+  if (tournamentFormatTeamButton) {
+    tournamentFormatTeamButton.disabled = tournamentState.active;
+  }
+  if (tournamentFormatSoloButton) {
+    tournamentFormatSoloButton.disabled = tournamentState.active;
+  }
   tournamentSummaryElement.textContent = tournamentState.generated
-    ? "已生成 8 个双人小组，赛程按固定半区推进。"
-    : "点击“随机抽签分组”生成 8 个双人小组，再开始整届赛事。";
+    ? config.summaryReady
+    : config.summaryIdle;
   tournamentRoundIndicator.textContent = tournamentState.currentRoundLabel || "等待抽签";
   tournamentDrawButton.disabled = !canStartTournament() || tournamentState.active;
 
@@ -872,17 +1017,22 @@ function renderTournamentPanel() {
           >
             <div class="tournament-tree-token">
               <div class="tournament-tree-balls">
-                ${(members.length ? members : [{ color: "#7a7a7a" }, { color: "#5a5a5a" }]).map((member) => `
-                  <span class="tournament-tree-orb" style="--member-color:${member.color ?? "#7a7a7a"}"></span>
+                ${members.map((member) => `
+                  <canvas
+                    class="tournament-tree-ball-preview"
+                    width="58"
+                    height="58"
+                    data-ball-character-id="${member.id}"
+                    data-ball-size="58"
+                    aria-label="${member.name}"
+                  ></canvas>
                 `).join("")}
               </div>
               <div class="tournament-tree-stems">
-                <span class="tournament-tree-stem"></span>
-                <span class="tournament-tree-stem"></span>
+                ${members.map(() => '<span class="tournament-tree-stem"></span>').join("")}
               </div>
               <div class="tournament-tree-bases">
-                <span class="tournament-tree-base"></span>
-                <span class="tournament-tree-base"></span>
+                ${members.map(() => '<span class="tournament-tree-base"></span>').join("")}
               </div>
             </div>
             <div class="tournament-tree-meta">
@@ -897,6 +1047,7 @@ function renderTournamentPanel() {
       }).join("")}
     </div>
   `;
+  renderTournamentBallCanvases(tournamentBracketElement);
 }
 
 function captureTournamentPromotion(match, winnerGroupId) {
@@ -942,6 +1093,7 @@ async function animateTournamentPromotion(promotion) {
   floating.style.top = `${promotion.sourceRect.top + promotion.sourceRect.height * 0.3}px`;
   floating.innerHTML = token.outerHTML;
   document.body.appendChild(floating);
+  renderTournamentBallCanvases(floating);
 
   targetElement.classList.add("promotion-target");
   await floating.animate([
@@ -985,6 +1137,7 @@ function invalidateTournamentBracket() {
   tournamentState.latestResult = null;
   tournamentState.currentMatchId = null;
   tournamentState.currentRoundLabel = "等待抽签";
+  tournamentState.format = tournamentFormat;
   renderTournamentPanel();
 }
 
@@ -1007,54 +1160,25 @@ function stopTournamentScene() {
   tournamentState.sceneStopper = null;
 }
 
-function drawTournamentToken(ctx, x, y, radius, member) {
-  const gradient = ctx.createRadialGradient(x - radius * 0.3, y - radius * 0.35, radius * 0.15, x, y, radius);
-  gradient.addColorStop(0, "#ffffff");
-  gradient.addColorStop(0.38, member.color);
-  gradient.addColorStop(1, "rgba(10,10,10,0.9)");
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,0.16)";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-}
-
-function drawTournamentGroupToken(ctx, x, y, radius, group, alpha = 1) {
-  const members = group?.members?.length ? group.members : [{ color: "#7a7a7a" }, { color: "#5a5a5a" }];
-  const orbOffset = radius * 0.62;
-  const orbRadius = radius * 0.72;
-  const stemW = Math.max(9, radius * 0.18);
-  const stemH = Math.max(30, radius * 0.68);
+function drawTournamentGroupToken(ctx, x, y, radius, group, alpha = 1, elapsed = 0) {
+  const members = group?.members?.length ? group.members : [{ color: "#7a7a7a" }];
+  const count = Math.max(1, members.length);
+  const ballDiameter = radius * 1.7;
+  const stemW = Math.max(10, radius * 0.2);
+  const stemH = Math.max(32, radius * 0.72);
+  const baseDiameter = radius * 0.72;
+  const spread = count === 1 ? 0 : radius * 0.92;
   ctx.save();
   ctx.globalAlpha = alpha;
 
-  members.slice(0, 2).forEach((member, index) => {
-    const orbX = x + (index === 0 ? -orbOffset : orbOffset);
-    const orb = ctx.createRadialGradient(
-      orbX - orbRadius * 0.3,
-      y - orbRadius * 0.34,
-      orbRadius * 0.1,
-      orbX,
-      y,
-      orbRadius,
-    );
-    orb.addColorStop(0, "#ffffff");
-    orb.addColorStop(0.34, member.color ?? "#7a7a7a");
-    orb.addColorStop(1, "rgba(14,14,14,0.96)");
-    ctx.fillStyle = orb;
-    ctx.beginPath();
-    ctx.arc(orbX, y, orbRadius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.14)";
-    ctx.lineWidth = Math.max(2, radius * 0.08);
-    ctx.stroke();
-
+  members.forEach((member, index) => {
+    const offset = count === 1 ? 0 : (index === 0 ? -spread : spread);
+    const orbX = x + offset;
+    drawTournamentBallPreview(ctx, orbX, y, ballDiameter, member, 1, elapsed);
     ctx.fillStyle = member.color ?? "#7a7a7a";
-    ctx.fillRect(orbX - stemW / 2, y + orbRadius * 0.92, stemW, stemH);
+    ctx.fillRect(orbX - stemW / 2, y + ballDiameter * 0.42, stemW, stemH);
     ctx.beginPath();
-    ctx.arc(orbX, y + orbRadius + stemH + radius * 0.24, radius * 0.34, 0, Math.PI * 2);
+    ctx.arc(orbX, y + ballDiameter * 0.42 + stemH + baseDiameter * 0.5, baseDiameter * 0.5, 0, Math.PI * 2);
     ctx.fill();
   });
   ctx.restore();
@@ -1107,7 +1231,6 @@ function renderTournamentBracketCanvas(ctx, scene, elapsed, width, height) {
 
   Object.entries(slotPositions).forEach(([slotId, point]) => {
     const group = getTournamentSlotGroup(slotId);
-    const label = group?.label ?? "";
     const isPlaceholder = !group;
     const status = group ? getGroupMatchStatus(group.id) : "pending";
     let alpha = status === "eliminated" ? 0.38 : 1;
@@ -1124,7 +1247,7 @@ function renderTournamentBracketCanvas(ctx, scene, elapsed, width, height) {
       return;
     }
 
-    drawTournamentGroupToken(ctx, point.x, point.y, 34, group, alpha);
+    drawTournamentGroupToken(ctx, point.x, point.y, 34, group, alpha, elapsed / 1000);
     if (status === "champion") {
       ctx.strokeStyle = "rgba(255,226,137,0.5)";
       ctx.lineWidth = 4;
@@ -1149,7 +1272,7 @@ function renderTournamentBracketCanvas(ctx, scene, elapsed, width, height) {
       const eased = moveT < 0.5 ? 4 * moveT * moveT * moveT : 1 - Math.pow(-2 * moveT + 2, 3) / 2;
       const x = source.x + (target.x - source.x) * eased;
       const y = source.y + (target.y - source.y) * eased;
-      drawTournamentGroupToken(ctx, x, y, 38, group);
+      drawTournamentGroupToken(ctx, x, y, 38, group, 1, elapsed / 1000);
     }
   }
 
@@ -1187,7 +1310,8 @@ function renderTournamentScene(scene, elapsed) {
   if (scene.type === "draw") {
     const pool = scene.pool;
     const groupWidth = 232;
-    const groupHeight = 170;
+    const memberRows = Math.max(1, Math.max(...scene.groups.map((group) => group.members.length)));
+    const groupHeight = memberRows > 1 ? 170 : 120;
     const startX = 60;
     const startY = 340;
     const gapX = 18;
@@ -1207,10 +1331,10 @@ function renderTournamentScene(scene, elapsed) {
           ? member
           : pool[(Math.floor(elapsed / 70) + index * 5 + memberIndex * 3) % pool.length];
         const tokenY = y + 64 + memberIndex * 58;
-        drawTournamentToken(ctx, x + 32, tokenY, 16, displayMember);
+        drawTournamentBallPreview(ctx, x + 36, tokenY + 4, 38, displayMember, 1, elapsed / 1000);
         ctx.fillStyle = displayMember.color;
         ctx.font = '700 24px "Microsoft YaHei UI", sans-serif';
-        ctx.fillText(displayMember.name, x + 58, tokenY + 8);
+        ctx.fillText(displayMember.name, x + 68, tokenY + 8);
       });
     });
     return;
@@ -1218,14 +1342,17 @@ function renderTournamentScene(scene, elapsed) {
 
   if (scene.type === "champion") {
     const group = scene.group;
+    if (!group) {
+      return;
+    }
     fillRoundedPanel(ctx, 160, 360, width - 320, 820, 32);
     ctx.textAlign = "center";
     ctx.fillStyle = "#ffe9a8";
     ctx.font = '700 42px "Microsoft YaHei UI", sans-serif';
     ctx.fillText("决胜组出线", width / 2, 430);
     group.members.forEach((member, index) => {
-      const centerX = width / 2 + (index === 0 ? -170 : 170);
-      drawTournamentToken(ctx, centerX, 650, 88, member);
+      const centerX = width / 2 + (index - (group.members.length - 1) / 2) * 320;
+      drawTournamentBallPreview(ctx, centerX, 650, 176, member, 1, elapsed / 1000);
       ctx.fillStyle = member.color;
       ctx.font = '700 38px "Microsoft YaHei UI", sans-serif';
       ctx.fillText(member.name, centerX, 790);
@@ -1487,6 +1614,8 @@ function canRecordCanvas() {
 
 function getRecordingMimeType() {
   const mimeTypes = [
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
     "video/webm;codecs=vp9",
     "video/webm;codecs=vp8",
     "video/webm",
@@ -2169,6 +2298,7 @@ function startCanvasRecording() {
       const finalMimeType = recordingState.mimeType;
 
       recordingState.stream?.getTracks().forEach((track) => track.stop());
+      resetAudioStream();
       resetRecordingState();
 
       if (chunks.length) {
@@ -2181,6 +2311,7 @@ function startCanvasRecording() {
 
     recorder.addEventListener("error", () => {
       recordingState.stream?.getTracks().forEach((track) => track.stop());
+      resetAudioStream();
       resetRecordingState();
       window.alert("Recording failed. Please try again.");
     });
@@ -2358,6 +2489,7 @@ async function runTournamentMatch(match) {
 }
 
 async function startTournament({ record = false } = {}) {
+  const tournamentConfig = getTournamentConfig();
   if (tournamentState.active || entryState.active) {
     return;
   }
@@ -2384,8 +2516,8 @@ async function startTournament({ record = false } = {}) {
     await playTournamentScene({
       type: "draw",
       eyebrow: "RANDOM DRAW",
-      title: "赛事抽签分组",
-      subtitle: "16 名角色随机分成 8 个双人小组",
+      title: tournamentConfig.drawTitle,
+      subtitle: tournamentConfig.drawSubtitle,
       groups: tournamentState.groups,
       pool: getTournamentRosterPool(),
     }, TOURNAMENT_DRAW_MS);
@@ -2393,8 +2525,8 @@ async function startTournament({ record = false } = {}) {
     resetTournamentBracketProgress();
     await playTournamentScene({
       type: "bracket",
-      title: "赛事赛程已就绪",
-      subtitle: "按顺序开始每一轮小组对决",
+      title: `${tournamentConfig.title}赛程已就绪`,
+      subtitle: `按顺序开始每一轮${tournamentConfig.lineupLabel}对决`,
       rounds: tournamentState.rounds,
       activeMatchId: null,
     }, TOURNAMENT_BRACKET_HOLD_MS);
@@ -2417,8 +2549,8 @@ async function startTournament({ record = false } = {}) {
       await playTournamentScene({
         type: "champion",
         eyebrow: "TOURNAMENT WINNER",
-        title: "决胜组出线",
-        subtitle: championGroup ? `${getTournamentGroupDisplayText(championGroup)} 成为本届冠军组` : "",
+        title: tournamentConfig.championTitle,
+        subtitle: championGroup ? `${getTournamentGroupDisplayText(championGroup)} ${tournamentConfig.championSubtitle}` : "",
         group: championGroup,
       }, TOURNAMENT_CHAMPION_HOLD_MS);
     }
@@ -2536,16 +2668,25 @@ modeTournamentButton?.addEventListener("click", () => {
   setAppMode("tournament");
 });
 
+tournamentFormatTeamButton?.addEventListener("click", () => {
+  setTournamentFormat("team");
+});
+
+tournamentFormatSoloButton?.addEventListener("click", () => {
+  setTournamentFormat("solo");
+});
+
 tournamentDrawButton?.addEventListener("click", async () => {
   if (tournamentState.active || !canStartTournament()) {
     return;
   }
+  const tournamentConfig = getTournamentConfig();
   generateTournamentGroups();
   await playTournamentScene({
     type: "draw",
     eyebrow: "RANDOM DRAW",
-    title: "赛事抽签分组",
-    subtitle: "16 名角色随机分成 8 个双人小组",
+    title: tournamentConfig.drawTitle,
+    subtitle: tournamentConfig.drawSubtitle,
     groups: tournamentState.groups,
     pool: getTournamentRosterPool(),
   }, TOURNAMENT_DRAW_MS);

@@ -69,6 +69,14 @@ export function getAudioStream() {
   return streamDest.stream;
 }
 
+// 每次录制结束后调用，重置音频流（避免 track 被 stop 后下次录制无声）
+export function resetAudioStream() {
+  if (streamDest && masterGain) {
+    try { masterGain.disconnect(streamDest); } catch {}
+  }
+  streamDest = null;
+}
+
 // ─── 通用碰撞与弹墙音效 ────────────────────────────────────────────────────────
 
 function playBallCollision(impactSpeed = 200) {

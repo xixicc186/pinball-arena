@@ -1028,12 +1028,6 @@ function renderTournamentPanel() {
                   ></canvas>
                 `).join("")}
               </div>
-              <div class="tournament-tree-stems">
-                ${members.map(() => '<span class="tournament-tree-stem"></span>').join("")}
-              </div>
-              <div class="tournament-tree-bases">
-                ${members.map(() => '<span class="tournament-tree-base"></span>').join("")}
-              </div>
             </div>
             <div class="tournament-tree-meta">
               <div class="tournament-tree-members">
@@ -1164,9 +1158,6 @@ function drawTournamentGroupToken(ctx, x, y, radius, group, alpha = 1, elapsed =
   const members = group?.members?.length ? group.members : [{ color: "#7a7a7a" }];
   const count = Math.max(1, members.length);
   const ballDiameter = radius * 1.7;
-  const stemW = Math.max(10, radius * 0.2);
-  const stemH = Math.max(32, radius * 0.72);
-  const baseDiameter = radius * 0.72;
   const spread = count === 1 ? 0 : radius * 0.92;
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -1175,11 +1166,6 @@ function drawTournamentGroupToken(ctx, x, y, radius, group, alpha = 1, elapsed =
     const offset = count === 1 ? 0 : (index === 0 ? -spread : spread);
     const orbX = x + offset;
     drawTournamentBallPreview(ctx, orbX, y, ballDiameter, member, 1, elapsed);
-    ctx.fillStyle = member.color ?? "#7a7a7a";
-    ctx.fillRect(orbX - stemW / 2, y + ballDiameter * 0.42, stemW, stemH);
-    ctx.beginPath();
-    ctx.arc(orbX, y + ballDiameter * 0.42 + stemH + baseDiameter * 0.5, baseDiameter * 0.5, 0, Math.PI * 2);
-    ctx.fill();
   });
   ctx.restore();
 }
@@ -1260,7 +1246,7 @@ function renderTournamentBracketCanvas(ctx, scene, elapsed, width, height) {
     ctx.font = '500 15px "Microsoft YaHei UI", sans-serif';
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
-    ctx.fillText(getTournamentGroupDisplayText(group), point.x, point.y + 78);
+    ctx.fillText(getTournamentGroupDisplayText(group), point.x, point.y + 54);
   });
 
   if (scene.promotion) {
@@ -1614,6 +1600,8 @@ function canRecordCanvas() {
 
 function getRecordingMimeType() {
   const mimeTypes = [
+    "video/mp4;codecs=avc1,mp4a.40.2",
+    "video/mp4",
     "video/webm;codecs=vp9,opus",
     "video/webm;codecs=vp8,opus",
     "video/webm;codecs=vp9",
@@ -2781,4 +2769,3 @@ updateHud(null);
 setAppMode("classic");
 renderTournamentPanel();
 initDb();
-

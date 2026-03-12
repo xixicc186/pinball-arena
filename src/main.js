@@ -1748,7 +1748,7 @@ function runEntryOutroTransition() {
         startCy: layout.cardsTop + i * (layout.cardH + layout.cardGap) + layout.cardH / 2,
         startSize: layout.ballSize,
       }));
-      startEntryRecordingLoop();
+      // 录制覆盖层由游戏的 onStateChange 在每帧渲染后叠加，不再启动独立循环
     }
 
     // 触发 CSS 转场：快速淡出覆盖层，场地迅速显现
@@ -2238,6 +2238,7 @@ function scheduleCanvasRecordingStop() {
     }
 
     renderRecordingFrame();
+    captureRecordingFrame();
     recordingState.stopAnimationFrameId = requestAnimationFrame(renderUntilStop);
   };
 
@@ -2577,6 +2578,8 @@ const game = new ArenaGame(canvas, {
     renderScoreboard(snapshot);
     recordingState.latestSnapshot = snapshot;
     renderRecordingFrame(snapshot);
+    // 游戏渲染完成后，叠加 Outro 覆盖层，再统一抓帧（每帧只抓一次）
+    if (entryState.outroActive) renderEntryOutroOnCanvas();
     captureRecordingFrame();
   },
   onMatchStart(snapshot) {

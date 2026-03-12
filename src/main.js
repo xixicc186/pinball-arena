@@ -121,7 +121,6 @@ const recordingState = {
   active: false,
   recorder: null,
   stream: null,
-  videoTrack: null,
   chunks: [],
   mimeType: "",
   renderCanvas: null,
@@ -1596,17 +1595,43 @@ function renderRecordingFrame(snapshot = recordingState.latestSnapshot) {
   }
 }
 
-function captureRecordingFrame() {
-  recordingState.videoTrack?.requestFrame();
-}
 function canRecordCanvas() {
   return typeof canvas.captureStream === "function" && typeof MediaRecorder !== "undefined";
 }
 
+// ── WebM → MP4 转换（FFmpeg.wasm，按需懒加载）─────────────────────────────────
+let _ffmpeg = null;
+
+async function loadFFmpeg() {
+  if (_ffmpeg) return _ffmpeg;
+  const { FFmpeg } = await import("https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js");
+  const ffmpeg = new FFmpeg();
+  await ffmpeg.load({
+    coreURL: "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js",
+    wasmURL: "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm",
+  });
+  _ffmpeg = ffmpeg;
+  return ffmpeg;
+}
+
+async function convertWebMToMP4(webmBlob, onProgress) {
+  const ffmpeg = await loadFFmpeg();
+  const handler = ({ progress }) => onProgress?.(progress);
+  ffmpeg.on("progress", handler);
+  try {
+    await ffmpeg.writeFile("input.webm", new Uint8Array(await webmBlob.arrayBuffer()));
+    await ffmpeg.exec(["-i", "input.webm", "-c:v", "copy", "-c:a", "aac", "output.mp4"]);
+    const data = await ffmpeg.readFile("output.mp4");
+    return new Blob([data.buffer], { type: "video/mp4" });
+  } finally {
+    ffmpeg.off("progress", handler);
+    ffmpeg.deleteFile("input.webm").catch(() => {});
+    ffmpeg.deleteFile("output.mp4").catch(() => {});
+  }
+}
+
 function getRecordingMimeType() {
   const mimeTypes = [
-    "video/mp4;codecs=avc1,mp4a.40.2",
-    "video/mp4",
     "video/webm;codecs=vp9,opus",
     "video/webm;codecs=vp8,opus",
     "video/webm;codecs=vp9",
@@ -1748,7 +1773,7 @@ function runEntryOutroTransition() {
         startCy: layout.cardsTop + i * (layout.cardH + layout.cardGap) + layout.cardH / 2,
         startSize: layout.ballSize,
       }));
-      // 录制覆盖层由游戏的 onStateChange 在每帧渲染后叠加，不再启动独立循环
+      startEntryRecordingLoop();
     }
 
     // 触发 CSS 转场：快速淡出覆盖层，场地迅速显现
@@ -2193,7 +2218,6 @@ function startEntryRecordingLoop() {
       return;
     }
     renderEntryOnCanvas();
-    captureRecordingFrame();
     recordingState.drawLoopId = requestAnimationFrame(loop);
   };
 
@@ -2214,7 +2238,6 @@ function resetRecordingState() {
   recordingState.active = false;
   recordingState.recorder = null;
   recordingState.stream = null;
-  recordingState.videoTrack = null;
   recordingState.chunks = [];
   recordingState.mimeType = "";
   recordingState.renderCanvas = null;
@@ -2238,7 +2261,6 @@ function scheduleCanvasRecordingStop() {
     }
 
     renderRecordingFrame();
-    captureRecordingFrame();
     recordingState.stopAnimationFrameId = requestAnimationFrame(renderUntilStop);
   };
 
@@ -2262,9 +2284,8 @@ function startCanvasRecording() {
 
   try {
     const mimeType = getRecordingMimeType();
-    const stream = canvas.captureStream(0);
+    const stream = canvas.captureStream(RECORDING_FPS);
     getAudioStream().getAudioTracks().forEach((track) => stream.addTrack(track));
-    recordingState.videoTrack = stream.getVideoTracks()[0] ?? null;
     const options = {
       videoBitsPerSecond: RECORDING_BITS_PER_SECOND,
     };
@@ -2299,9 +2320,33 @@ function startCanvasRecording() {
       resetRecordingState();
 
       if (chunks.length) {
-        const blob = new Blob(chunks, { type: finalMimeType });
-        if (window.confirm("录制已完成，是否导出这段视频？")) {
-          downloadRecording(blob, finalMimeType);
+        const webmBlob = new Blob(chunks, { type: finalMimeType });
+        if (!window.confirm("录制已完成，是否导出这段视频？")) return;
+
+        downloadRecording(webmBlob, finalMimeType);
+
+        if (!window.confirm("是否同时转换为 MP4？\n（首次使用需加载约 25MB 的转换工具）")) return;
+
+        const btn = getCurrentRecordButton();
+        if (btn) { btn.textContent = "加载转换工具..."; btn.disabled = true; }
+
+        try {
+          const mp4Blob = await convertWebMToMP4(webmBlob, (p) => {
+            if (btn) btn.textContent = `MP4 转换中 ${Math.round(p * 100)}%`;
+          });
+          const url = URL.createObjectURL(mp4Blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${buildRecordingFilename()}.mp4`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (err) {
+          console.error("MP4 conversion failed:", err);
+          window.alert("MP4 转换失败，请使用已下载的 WebM 文件。");
+        } finally {
+          updateRecordButton();
         }
       }
     });
@@ -2578,9 +2623,6 @@ const game = new ArenaGame(canvas, {
     renderScoreboard(snapshot);
     recordingState.latestSnapshot = snapshot;
     renderRecordingFrame(snapshot);
-    // 游戏渲染完成后，叠加 Outro 覆盖层，再统一抓帧（每帧只抓一次）
-    if (entryState.outroActive) renderEntryOutroOnCanvas();
-    captureRecordingFrame();
   },
   onMatchStart(snapshot) {
     hideEntryStage();

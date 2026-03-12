@@ -121,6 +121,7 @@ const recordingState = {
   active: false,
   recorder: null,
   stream: null,
+  videoTrack: null,
   chunks: [],
   mimeType: "",
   renderCanvas: null,
@@ -1594,6 +1595,10 @@ function renderRecordingFrame(snapshot = recordingState.latestSnapshot) {
     recordingState.latestSnapshot = snapshot;
   }
 }
+
+function captureRecordingFrame() {
+  recordingState.videoTrack?.requestFrame();
+}
 function canRecordCanvas() {
   return typeof canvas.captureStream === "function" && typeof MediaRecorder !== "undefined";
 }
@@ -2188,6 +2193,7 @@ function startEntryRecordingLoop() {
       return;
     }
     renderEntryOnCanvas();
+    captureRecordingFrame();
     recordingState.drawLoopId = requestAnimationFrame(loop);
   };
 
@@ -2208,6 +2214,7 @@ function resetRecordingState() {
   recordingState.active = false;
   recordingState.recorder = null;
   recordingState.stream = null;
+  recordingState.videoTrack = null;
   recordingState.chunks = [];
   recordingState.mimeType = "";
   recordingState.renderCanvas = null;
@@ -2254,8 +2261,9 @@ function startCanvasRecording() {
 
   try {
     const mimeType = getRecordingMimeType();
-    const stream = canvas.captureStream(RECORDING_FPS);
+    const stream = canvas.captureStream(0);
     getAudioStream().getAudioTracks().forEach((track) => stream.addTrack(track));
+    recordingState.videoTrack = stream.getVideoTracks()[0] ?? null;
     const options = {
       videoBitsPerSecond: RECORDING_BITS_PER_SECOND,
     };
@@ -2569,6 +2577,7 @@ const game = new ArenaGame(canvas, {
     renderScoreboard(snapshot);
     recordingState.latestSnapshot = snapshot;
     renderRecordingFrame(snapshot);
+    captureRecordingFrame();
   },
   onMatchStart(snapshot) {
     hideEntryStage();

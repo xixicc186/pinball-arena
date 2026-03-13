@@ -56,15 +56,15 @@ const TOURNAMENT_FORMATS = {
   team: {
     key: “team”,
     title: “组队赛”,
-    requiredRoster: 8,
+    requiredRoster: 16,
     groupSize: 2,
     lineupLabel: “双人小组”,
     stageHeading: “双人组”,
     finalLabel: “决胜组”,
     drawTitle: “赛事抽签分组”,
-    drawSubtitle: “8 名角色随机分成 4 个双人小组”,
+    drawSubtitle: “16 名角色随机分成 8 个双人小组”,
     summaryIdle: “点击「开始赛事」或「录制整届赛事」自动抽签并开始所有对局。”,
-    summaryReady: “已生成 4 个双人小组，点击「开始赛事」直接开始。”,
+    summaryReady: “已生成 8 个双人小组，点击「开始赛事」直接开始。”,
     championTitle: “决胜组出线”,
     championSubtitle: “成为本届冠军组”,
   },
@@ -691,28 +691,6 @@ function buildTournamentRounds(groups, format = tournamentFormat) {
     loserGroupId: null,
   });
 
-  if (format === "team") {
-    // 4 groups → 4进2 → 决胜组
-    return [
-      {
-        key: "semifinals",
-        label: "4进2",
-        matches: [
-          createMatch("sf-1", "对局 1", "4进2", { type: "group", id: groups[0].id }, { type: "group", id: groups[1].id }),
-          createMatch("sf-2", "对局 2", "4进2", { type: "group", id: groups[2].id }, { type: "group", id: groups[3].id }),
-        ],
-      },
-      {
-        key: "final",
-        label: config.finalLabel,
-        matches: [
-          createMatch("final-1", "决胜战", config.finalLabel, { type: "match", id: "sf-1" }, { type: "match", id: "sf-2" }),
-        ],
-      },
-    ];
-  }
-
-  // Solo: 8 groups → 8进4 → 4进2 → 决胜局
   return [
     {
       key: "quarterfinals",
@@ -754,46 +732,13 @@ function getTournamentSourceSlotIds(match) {
 
 function getTournamentBracketLayout() {
   const config = getTournamentConfig();
-  const slots = {};
-
-  if (tournamentState.format === "team") {
-    // 4 groups, 3 stages: 双人组 → 4进2 → 决胜组
-    const stageX = [0.14, 0.5, 0.86];
-    const groupY = [0.12, 0.37, 0.63, 0.88];
-    const semiY = [(groupY[0] + groupY[1]) / 2, (groupY[2] + groupY[3]) / 2];
-    const finalY = [(semiY[0] + semiY[1]) / 2];
-
-    tournamentState.groups.forEach((group, index) => {
-      slots[`group:${group.id}`] = { x: stageX[0], y: groupY[index], stage: 0 };
-    });
-    tournamentState.rounds[0]?.matches.forEach((match, index) => {
-      slots[getTournamentWinnerSlotId(match.id)] = { x: stageX[1], y: semiY[index], stage: 1 };
-    });
-    if (tournamentState.rounds[1]?.matches[0]) {
-      slots[getTournamentWinnerSlotId(tournamentState.rounds[1].matches[0].id)] = {
-        x: stageX[2],
-        y: finalY[0],
-        stage: 2,
-      };
-    }
-    return {
-      stageX,
-      slots,
-      headings: [
-        { label: config.stageHeading, x: stageX[0] },
-        { label: "4进2", x: stageX[1] },
-        { label: config.finalLabel, x: stageX[2] },
-      ],
-    };
-  }
-
-  // Solo: 8 groups, 4 stages: 个人 → 8进4 → 4进2 → 决胜局
   const stageX = [0.11, 0.39, 0.67, 0.89];
   const groupY = Array.from({ length: 8 }, (_, index) => 0.11 + index * 0.11);
   const quarterY = [0, 1, 2, 3].map((index) => (groupY[index * 2] + groupY[index * 2 + 1]) / 2);
   const semiY = [0, 1].map((index) => (quarterY[index * 2] + quarterY[index * 2 + 1]) / 2);
   const finalY = [(semiY[0] + semiY[1]) / 2];
 
+  const slots = {};
   tournamentState.groups.forEach((group, index) => {
     slots[`group:${group.id}`] = { x: stageX[0], y: groupY[index], stage: 0 };
   });
@@ -810,6 +755,7 @@ function getTournamentBracketLayout() {
       stage: 3,
     };
   }
+
   return {
     stageX,
     slots,

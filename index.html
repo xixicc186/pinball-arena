@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>弹球角斗场</title>
-    <link rel="stylesheet" href="./styles.css?v=20260312a" />
+    <link rel="stylesheet" href="./styles.css?v=20260312c" />
   </head>
   <body>
     <div class="shell">
@@ -49,10 +49,6 @@
           <div id="overlay" class="overlay hidden"></div>
           <div id="entry-stage" class="entry-stage hidden" aria-live="polite">
             <div class="entry-stage-inner">
-              <div class="entry-stage-header">
-                <p class="entry-eyebrow">Battle Start</p>
-                <h2>参战选手登场</h2>
-              </div>
               <div id="entry-stage-cards" class="entry-stage-cards"></div>
             </div>
           </div>
@@ -107,6 +103,11 @@
           </div>
 
           <div id="tournament-mode-panel" class="mode-panel hidden">
+            <div class="tournament-format-tabs" role="tablist" aria-label="赛事格式切换">
+              <button id="tournament-format-team-button" class="tournament-format-button active" type="button" aria-pressed="true">组队赛</button>
+              <button id="tournament-format-solo-button" class="tournament-format-button" type="button" aria-pressed="false">个人战</button>
+            </div>
+
             <div class="toolbar-row tournament-toolbar-row">
               <button id="tournament-record-button" class="secondary-button" type="button">录制整届赛事</button>
               <button id="tournament-start-button" class="primary-button" type="button">开始赛事</button>
@@ -164,6 +165,6 @@
       </section>
     </div>
 
-    <script type="module" src="./src/main.js?v=20260312a"></script>
+    <script type="module" src="./src/main.js?v=20260312c"></script>
   </body>
 </html>

@@ -52,8 +52,8 @@ const DEFAULT_DUEL_TIME = 45;
 const RECORDING_FPS = 60;
 const RECORDING_BITS_PER_SECOND = 24_000_000;
 const RECORDING_END_HOLD_MS = 2500;
-const ENTRY_CARD_STAGGER_MS = 200;
-const ENTRY_HOLD_MS = 1800;
+const ENTRY_CARD_STAGGER_MS = 0; // unused, kept for recording compat
+const ENTRY_HOLD_MS = 2000;
 const ENTRY_OUTRO_MS = 1100;
 const TOURNAMENT_FORMATS = {
   team: {
@@ -1764,13 +1764,13 @@ function runEntryOutroTransition() {
     if (recordingState.active) {
       const cssW = arenaCanvas.width / dpr;
       const cssH = arenaCanvas.height / dpr;
-      const layout = getRecordingLayout(cssW, cssH, entryState.characters.length);
+      const layout = getVsLayout(cssW, cssH, entryState.characters.length);
       entryState.outroStartTime = performance.now();
       entryState.outroBalls = entryState.characters.map((character, i) => ({
         character,
         actor: actorByCharId[character.id] ?? null,
-        startCx: layout.innerX + layout.cardPadH + layout.ballSize / 2,
-        startCy: layout.cardsTop + i * (layout.cardH + layout.cardGap) + layout.cardH / 2,
+        startCx: layout.playerCenters[i],
+        startCy: layout.ballCy,
         startSize: layout.ballSize,
       }));
       startEntryRecordingLoop();
@@ -1809,9 +1809,9 @@ function startEntryBallLoop() {
       return;
     }
     const elapsed = (performance.now() - entryState.animStart) / 1000;
+    const ballCanvases = entryStageCards.querySelectorAll(".entry-vs-ball");
     entryState.characters.forEach((character, index) => {
-      const card = entryStageCards.children[index];
-      const ballCanvas = card?.querySelector(".entry-card-ball");
+      const ballCanvas = ballCanvases[index];
       if (!ballCanvas) return;
       const bCtx = ballCanvas.getContext("2d");
       bCtx.clearRect(0, 0, ballCanvas.width, ballCanvas.height);
@@ -1835,14 +1835,26 @@ function runEntryAnimation(characterIds) {
   updateRecordButton();
 
   const dpr = window.devicePixelRatio || 1;
-  const cssSize = 64;
-  const canvasSize = Math.round(cssSize * dpr);
+  const ballCssSize = 100;
+  const ballCanvasSize = Math.round(ballCssSize * dpr);
+
+  // Eyebrow
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "entry-vs-eyebrow";
+  eyebrow.textContent = "BATTLE START";
+  entryStageCards.appendChild(eyebrow);
+
+  // VS row
+  const vsRow = document.createElement("div");
+  vsRow.className = "entry-vs-row";
 
   entryState.characters.forEach((character, index) => {
-    const card = document.createElement("article");
-    card.className = "entry-card";
-    card.style.setProperty("--char-color", character.color);
-    card.style.animationDelay = `${index * ENTRY_CARD_STAGGER_MS}ms`;
+    if (index > 0) {
+      const sep = document.createElement("div");
+      sep.className = "entry-vs-sep";
+      sep.textContent = "VS";
+      vsRow.appendChild(sep);
+    }
 
     const intro = getIntroText(character.id, character);
     const skillsHtml = [
@@ -1850,21 +1862,21 @@ function runEntryAnimation(characterIds) {
       intro.ultimateName ? `<div class="entry-skill"><span class="entry-skill-label">大招</span><span class="entry-skill-name">${intro.ultimateName}</span></div>` : "",
     ].join("");
 
-    card.innerHTML = `
-      <canvas class="entry-card-ball" width="${canvasSize}" height="${canvasSize}" style="width:${cssSize}px;height:${cssSize}px;"></canvas>
-      <div class="entry-card-info">
-        <div class="entry-card-name">${intro.name}</div>
-        <div class="entry-card-title">${intro.title}</div>
-        ${intro.description ? `<div class="entry-card-desc">${intro.description}</div>` : ""}
-        <div class="entry-card-skills">${skillsHtml}</div>
-      </div>
+    const player = document.createElement("div");
+    player.className = "entry-vs-player";
+    player.style.setProperty("--char-color", character.color);
+    player.innerHTML = `
+      <canvas class="entry-vs-ball" width="${ballCanvasSize}" height="${ballCanvasSize}" style="width:${ballCssSize}px;height:${ballCssSize}px;"></canvas>
+      <div class="entry-vs-name">${intro.name}</div>
+      <div class="entry-card-skills">${skillsHtml}</div>
     `;
-    entryStageCards.appendChild(card);
+    vsRow.appendChild(player);
   });
 
+  entryStageCards.appendChild(vsRow);
   startEntryBallLoop();
 
-  const totalAnimTime = entryState.characters.length * ENTRY_CARD_STAGGER_MS + 400 + ENTRY_HOLD_MS;
+  const totalAnimTime = 400 + ENTRY_HOLD_MS;
 
   return new Promise((resolve) => {
     const doneId = window.setTimeout(() => {
@@ -1880,7 +1892,36 @@ function runEntryAnimation(characterIds) {
   });
 }
 
-// 录制版布局（单列，左右贴边，垂直居中）
+// VS 入场画面布局（用于录制模式 canvas 渲染）
+function getVsLayout(W, H, count) {
+  const ballSize   = Math.round(Math.min(W * (0.22 * 2 / count), H * 0.14, 200));
+  const nameSz     = Math.round(Math.min(W * (0.082 * 2 / count), 72));
+  const vsSz       = Math.round(Math.min(W * 0.055, 52));
+  const skillSz    = Math.round(Math.min(W * 0.028, 24));
+  const skillLineH = Math.round(skillSz * 1.7);
+  const gap        = 18;
+
+  const blockH   = ballSize + gap + nameSz + gap + skillLineH * 2;
+  const blockTop = Math.max(H * 0.08, (H - blockH) / 2);
+  const ballCy   = blockTop + ballSize / 2;
+  const nameY    = blockTop + ballSize + gap + nameSz / 2;
+  const skillsTop = nameY + nameSz / 2 + gap;
+
+  const vsColW     = vsSz * 3.2;
+  const totalVsW   = vsColW * (count - 1);
+  const playerColW = (W - totalVsW) / count;
+
+  const playerCenters = Array.from({ length: count }, (_, i) =>
+    playerColW * (i + 0.5) + vsColW * i
+  );
+  const vsCenters = Array.from({ length: count - 1 }, (_, i) =>
+    playerColW * (i + 1) + vsColW * (i + 0.5)
+  );
+
+  return { ballSize, nameSz, vsSz, skillSz, skillLineH, blockTop, ballCy, nameY, skillsTop, playerCenters, vsCenters, playerColW };
+}
+
+// 录制版布局（保留供参考，不再主用）
 function getRecordingLayout(cssW, cssH, characterCount) {
   // ballSize：使预览球的视觉直径 = 游戏场地内默认角色球的直径
   // renderBallPreview 将球填充到 canvas 的 38%（半径），即视觉直径 = ballSize × 0.76
@@ -1931,25 +1972,19 @@ function getRecordingLayout(cssW, cssH, characterCount) {
 // 返回录制画布上每个小球的屏幕坐标（用于飞行动画起点）
 function getRecordingBallScreenPositions() {
   const dpr = window.devicePixelRatio || 1;
-  const cssW = canvas.width / dpr;
-  const cssH = canvas.height / dpr;
-  const { innerX, cardH, cardGap, cardPadH, ballSize, cardsTop } =
-    getRecordingLayout(cssW, cssH, entryState.characters.length);
-
+  const W = canvas.width / dpr;
+  const H = canvas.height / dpr;
+  const layout = getVsLayout(W, H, entryState.characters.length);
   const canvasRect = canvas.getBoundingClientRect();
 
-  return entryState.characters.map((_, i) => {
-    const ballCx = innerX + cardPadH + ballSize / 2;
-    const ballCy = cardsTop + i * (cardH + cardGap) + cardH / 2;
-    return {
-      x: canvasRect.left + ballCx,
-      y: canvasRect.top + ballCy,
-      size: ballSize,
-    };
-  });
+  return entryState.characters.map((_, i) => ({
+    x: canvasRect.left + layout.playerCenters[i],
+    y: canvasRect.top + layout.ballCy,
+    size: layout.ballSize,
+  }));
 }
 
-// 录制转场：游戏已完成本帧渲染，在 canvas 上叠加淡出的出场卡片 + 飞行小球
+// 录制转场：游戏已完成本帧渲染，在 canvas 上叠加淡出的 VS 界面 + 飞行小球
 function renderEntryOutroOnCanvas() {
   if (!recordingState.active) return;
   const ctx = canvas.getContext("2d");
@@ -1960,15 +1995,10 @@ function renderEntryOutroOnCanvas() {
   const t = Math.min((now - entryState.outroStartTime) / ENTRY_OUTRO_MS, 1);
   const elapsed = (now - entryState.animStart) / 1000;
 
-  const layout = getRecordingLayout(W, H, entryState.characters.length);
-  const { innerX, cardW, cardH, cardGap, cardPadV, cardPadH, ballSize,
-          eyebrowSize, titleSize, textSize, lineH, pillSize, pillH,
-          eyebrowY, titleY, cardsTop } = layout;
-
   ctx.save();
   ctx.scale(dpr, dpr);
 
-  // ── 1. 淡出背景覆盖层（匹配 CSS 500ms 淡出，共 1100ms 总时长）
+  // 1. 淡出背景覆盖层
   const overlayFade = Math.max(0, 1 - t * (ENTRY_OUTRO_MS / 500));
   if (overlayFade > 0.005) {
     ctx.globalAlpha = overlayFade * 0.88;
@@ -1980,57 +2010,13 @@ function renderEntryOutroOnCanvas() {
     ctx.fillStyle = grd;
     ctx.fillRect(0, 0, W, H);
 
-    // ── 2. 淡出标题和卡片（跟背景同步）
+    // 2. 淡出 VS 界面内容
     ctx.globalAlpha = overlayFade;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "#f3d2a2";
-    ctx.font = `600 ${eyebrowSize}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText("B A T T L E   S T A R T", W / 2, eyebrowY);
-    ctx.fillStyle = "#f3f3f3";
-    ctx.font = `700 ${titleSize}px Georgia, "Microsoft YaHei UI", serif`;
-    ctx.fillText("参战选手登场", W / 2, titleY);
-
-    entryState.characters.forEach((character, i) => {
-      const cardX = innerX;
-      const cardY = cardsTop + i * (cardH + cardGap);
-      drawRoundRect(ctx, cardX, cardY, cardW, cardH, 18);
-      ctx.fillStyle = "rgba(255,255,255,0.04)";
-      ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,0.1)";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      const ballCx = cardX + cardPadH + ballSize / 2;
-      const ballCy = cardY + cardH / 2;
-      const offCanvas = document.createElement("canvas");
-      offCanvas.width = Math.round(ballSize * dpr);
-      offCanvas.height = Math.round(ballSize * dpr);
-      game.renderBallPreview(offCanvas.getContext("2d"), character, elapsed);
-      ctx.drawImage(offCanvas, ballCx - ballSize / 2, ballCy - ballSize / 2, ballSize, ballSize);
-
-      const infoX = cardX + cardPadH + ballSize + Math.round(ballSize * 0.22);
-      const infoMaxW = cardX + cardW - cardPadH - infoX;
-      const textTop = cardY + cardPadV;
-      ctx.textAlign = "left";
-      ctx.textBaseline = "top";
-      ctx.fillStyle = character.color;
-      ctx.font = `700 ${textSize}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(character.name, infoX, textTop);
-      ctx.fillStyle = "#a6a6a6";
-      ctx.font = `400 ${textSize}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillText(character.title, infoX, textTop + lineH);
-      if (character.description) {
-        ctx.fillStyle = "rgba(255,255,255,0.5)";
-        wrapText(ctx, character.description, infoMaxW, 3).forEach((line, li) => {
-          ctx.fillText(line, infoX, textTop + lineH * 2 + li * lineH);
-        });
-      }
-    });
+    drawVsScreen(ctx, W, H, entryState.characters, elapsed, 1);
     ctx.globalAlpha = 1;
   }
 
-  // ── 3. 飞行小球（canvas 版，独立透明度，匹配 HTML DOM 版参数）
+  // 3. 飞行小球
   const moveEase = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   const fadeStart = 0.72;
   const fadeEnd = 0.97;
@@ -2038,7 +2024,6 @@ function renderEntryOutroOnCanvas() {
 
   if (ballOpacity > 0.02) {
     entryState.outroBalls.forEach(({ character, actor, startCx, startCy, startSize }) => {
-      // actor 位置（游戏坐标）→ canvas CSS 坐标
       const targetX = actor ? actor.position.x * (W / 540) : W / 2;
       const targetY = actor ? actor.position.y * (H / 960) : H / 2;
       const targetSize = actor ? actor.radius * (W / 540) * 2 : startSize * 0.35;
@@ -2062,9 +2047,86 @@ function renderEntryOutroOnCanvas() {
   ctx.restore();
 }
 
+// 绘制 VS 界面（供录制模式使用）
+function drawVsScreen(ctx, W, H, characters, elapsed, alpha) {
+  const dpr = window.devicePixelRatio || 1;
+  const layout = getVsLayout(W, H, characters.length);
+  const { ballSize, nameSz, vsSz, skillSz, skillLineH, blockTop, ballCy, nameY, skillsTop, playerCenters, vsCenters } = layout;
+
+  // Eyebrow
+  const eyebrowSz = Math.round(Math.min(W * 0.028, 24));
+  const eyebrowY = blockTop - eyebrowSz - 22;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = `rgba(243,210,162,${alpha})`;
+  ctx.font = `600 ${eyebrowSz}px "Microsoft YaHei UI", sans-serif`;
+  ctx.fillText("B A T T L E   S T A R T", W / 2, eyebrowY);
+
+  // VS separators
+  ctx.font = `900 ${vsSz}px "Microsoft YaHei UI", sans-serif`;
+  ctx.fillStyle = `rgba(255,255,255,${0.55 * alpha})`;
+  vsCenters.forEach((x) => {
+    ctx.fillText("VS", x, nameY);
+  });
+
+  // Each player
+  characters.forEach((character, i) => {
+    const cx = playerCenters[i];
+
+    // Ball
+    const offCanvas = document.createElement("canvas");
+    offCanvas.width = Math.round(ballSize * dpr);
+    offCanvas.height = Math.round(ballSize * dpr);
+    game.renderBallPreview(offCanvas.getContext("2d"), character, elapsed);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.drawImage(offCanvas, cx - ballSize / 2, ballCy - ballSize / 2, ballSize, ballSize);
+    ctx.restore();
+
+    // Name
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const [r, g, b] = hexToRgb(character.color);
+    ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+    ctx.font = `900 ${nameSz}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(character.name, cx, nameY);
+
+    // Skills
+    const basicName = character.basicAttack?.name ?? "";
+    const ultName = character.ultimate?.name ?? "";
+    const skills = [
+      basicName ? { label: "普攻", name: basicName } : null,
+      ultName ? { label: "大招", name: ultName } : null,
+    ].filter(Boolean);
+
+    skills.forEach(({ label, name }, si) => {
+      const y = skillsTop + si * skillLineH;
+      ctx.font = `400 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
+      const labelW = ctx.measureText(label + " ").width;
+      ctx.font = `600 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
+      const nameW = ctx.measureText(name).width;
+      const totalW = labelW + nameW;
+      const startX = cx - totalW / 2;
+
+      ctx.textAlign = "left";
+      ctx.font = `400 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillStyle = `rgba(255,255,255,${0.4 * alpha})`;
+      ctx.fillText(label + " ", startX, y);
+      ctx.font = `600 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillStyle = `rgba(255,255,255,${0.85 * alpha})`;
+      ctx.fillText(name, startX + labelW, y);
+    });
+  });
+}
+
+function hexToRgb(hex) {
+  const h = hex.replace("#", "");
+  const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
 function renderEntryOnCanvas() {
   if (!recordingState.active) return;
-  // 转场阶段：游戏已渲染本帧，叠加淡出覆盖层 + canvas 飞行小球
   if (entryState.outroActive) {
     renderEntryOutroOnCanvas();
     return;
@@ -2073,7 +2135,6 @@ function renderEntryOnCanvas() {
 
   const ctx = canvas.getContext("2d");
   const dpr = window.devicePixelRatio || 1;
-  // 以 CSS 像素为单位绘制，最后由 dpr scale 映射到设备像素
   const W = canvas.width / dpr;
   const H = canvas.height / dpr;
   const elapsedMs = performance.now() - entryState.animStart;
@@ -2082,7 +2143,7 @@ function renderEntryOnCanvas() {
   ctx.save();
   ctx.scale(dpr, dpr);
 
-  // ── 背景（匹配 .entry-stage CSS）──
+  // 背景
   ctx.fillStyle = "#040404";
   ctx.fillRect(0, 0, W, H);
   const grd = ctx.createRadialGradient(W / 2, 0, 0, W / 2, 0, W * 0.9);
@@ -2091,118 +2152,15 @@ function renderEntryOnCanvas() {
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, W, H);
 
-  // ── 统一布局（垂直居中、比例放大）──
-  const characters = entryState.characters;
-  const {
-    innerX, cardW, cardH, cardGap, cardPadV, cardPadH, ballSize,
-    eyebrowSize, titleSize, textSize, lineH, pillSize, pillH,
-    eyebrowY, titleY, cardsTop,
-  } = getRecordingLayout(W, H, characters.length);
+  // 淡入动画（400ms）
+  const fadeT = Math.min(elapsedMs / 400, 1);
+  const ease = 1 - Math.pow(1 - fadeT, 3);
 
-  // ── 标题区 ──
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-
-  ctx.fillStyle = "#f3d2a2";
-  ctx.font = `600 ${eyebrowSize}px "Microsoft YaHei UI", sans-serif`;
-  ctx.fillText("B A T T L E   S T A R T", W / 2, eyebrowY);
-
-  ctx.fillStyle = "#f3f3f3";
-  ctx.font = `700 ${titleSize}px Georgia, "Microsoft YaHei UI", serif`;
-  ctx.fillText("参战选手登场", W / 2, titleY);
-
-  // ── 卡片区 ──
-  characters.forEach((character, i) => {
-    const cardX = innerX;
-    const cardY = cardsTop + i * (cardH + cardGap);
-
-    // 入场动画（stagger slide-in）
-    const cardElapsedMs = elapsedMs - i * ENTRY_CARD_STAGGER_MS;
-    if (cardElapsedMs <= 0) return;
-    const animT = Math.min(cardElapsedMs / 380, 1);
-    const ease = 1 - Math.pow(1 - animT, 3);
-
-    ctx.save();
-    ctx.globalAlpha = ease;
-    ctx.translate(0, (1 - ease) * 18);
-
-    // 卡片背景
-    drawRoundRect(ctx, cardX, cardY, cardW, cardH, 18);
-    ctx.fillStyle = "rgba(255,255,255,0.04)";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.1)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // 小球预览
-    const ballCx = cardX + cardPadH + ballSize / 2;
-    const ballCy = cardY + cardH / 2;
-    const offCanvas = document.createElement("canvas");
-    offCanvas.width = Math.round(ballSize * dpr);
-    offCanvas.height = Math.round(ballSize * dpr);
-    game.renderBallPreview(offCanvas.getContext("2d"), character, elapsed);
-    ctx.drawImage(offCanvas, ballCx - ballSize / 2, ballCy - ballSize / 2, ballSize, ballSize);
-
-    // 文字信息
-    const infoX = cardX + cardPadH + ballSize + Math.round(ballSize * 0.22);
-    const infoMaxW = cardX + cardW - cardPadH - infoX;
-    const textTop = cardY + cardPadV;
-
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    ctx.fillStyle = character.color;
-    ctx.font = `700 ${textSize}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(character.name, infoX, textTop);
-
-    ctx.fillStyle = "#a6a6a6";
-    ctx.font = `400 ${textSize}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(character.title, infoX, textTop + lineH);
-
-    if (character.description) {
-      ctx.fillStyle = "rgba(255,255,255,0.5)";
-      wrapText(ctx, character.description, infoMaxW, 3).forEach((line, li) => {
-        ctx.fillText(line, infoX, textTop + lineH * 2 + li * lineH);
-      });
-    }
-
-    // 技能 pill 标签
-    const basicName = character.basicAttack?.name ?? "";
-    const ultName   = character.ultimate?.name ?? "";
-    const skills = [
-      basicName ? { label: "普攻", name: basicName } : null,
-      ultName   ? { label: "大招", name: ultName   } : null,
-    ].filter(Boolean);
-
-    if (skills.length) {
-      ctx.font = `400 ${pillSize}px "Microsoft YaHei UI", sans-serif`;
-      const skillY = cardY + cardH - cardPadV - pillH / 2;
-      let skillX = infoX;
-
-      skills.forEach(({ label, name }) => {
-        const labelW = ctx.measureText(label).width;
-        const nameW  = ctx.measureText(name).width;
-        const pillW  = labelW + nameW + 16 + 6;
-
-        drawRoundRect(ctx, skillX, skillY - pillH / 2, pillW, pillH, pillH / 2);
-        ctx.fillStyle = "rgba(255,255,255,0.06)";
-        ctx.fill();
-        ctx.strokeStyle = "rgba(255,255,255,0.1)";
-        ctx.lineWidth = 1;
-        ctx.stroke();
-
-        ctx.textBaseline = "middle";
-        ctx.fillStyle = "#a6a6a6";
-        ctx.fillText(label, skillX + 8, skillY);
-        ctx.fillStyle = "rgba(255,255,255,0.85)";
-        ctx.fillText(name, skillX + 8 + labelW + 6, skillY);
-
-        skillX += pillW + 6;
-        ctx.textBaseline = "top";
-      });
-    }
-
-    ctx.restore();
-  });
+  ctx.save();
+  ctx.globalAlpha = ease;
+  ctx.translate(0, (1 - ease) * 12);
+  drawVsScreen(ctx, W, H, entryState.characters, elapsed, 1);
+  ctx.restore();
 
   ctx.restore();
 }

@@ -266,105 +266,93 @@ body {
   transition: opacity 500ms ease !important;
 }
 
-.entry-stage-outro .entry-stage-header,
-.entry-stage-outro .entry-card-info {
+.entry-stage-outro .entry-vs-row,
+.entry-stage-outro .entry-vs-eyebrow {
   opacity: 0;
   transition: opacity 160ms ease;
 }
 
-.entry-stage-outro .entry-card {
-  border-color: transparent;
-  background: transparent;
-  transition: border-color 160ms ease, background 160ms ease;
-}
-
 .entry-stage-inner {
-  width: min(860px, 100%);
+  width: min(900px, 100%);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  align-items: center;
+  gap: 24px;
 }
 
-.entry-stage-header {
-  text-align: center;
-}
-
-.entry-eyebrow {
-  margin: 0 0 8px;
+/* VS 入场画面 */
+.entry-vs-eyebrow {
   color: #f3d2a2;
+  font-size: 12px;
   letter-spacing: 0.28em;
   text-transform: uppercase;
-  font-size: 12px;
-}
-
-.entry-stage-header h2 {
+  text-align: center;
   margin: 0;
-  font-family: Georgia, "Microsoft YaHei UI", serif;
-  font-size: clamp(22px, 3vw, 34px);
 }
 
 .entry-stage-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  width: 100%;
 }
 
-.entry-card {
+.entry-vs-row {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  width: 100%;
   opacity: 0;
-  transform: translateY(18px);
-  animation: entry-card-in 380ms ease forwards;
+  animation: vs-row-in 380ms ease forwards;
 }
 
-@keyframes entry-card-in {
+@keyframes vs-row-in {
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
 
-.entry-card-ball {
-  flex-shrink: 0;
+.entry-vs-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 160px;
+  max-width: 280px;
+}
+
+.entry-vs-ball {
   display: block;
   background: transparent;
+  flex-shrink: 0;
 }
 
-.entry-card-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.entry-card-name {
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.2;
+.entry-vs-name {
+  font-size: clamp(26px, 4.5vw, 52px);
+  font-weight: 900;
   color: var(--char-color);
+  text-align: center;
+  line-height: 1.1;
 }
 
-.entry-card-title {
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 6px;
-}
-
-.entry-card-desc {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
-  line-height: 1.5;
-  margin-bottom: 8px;
+.entry-vs-sep {
+  font-size: clamp(22px, 3.8vw, 44px);
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
 }
 
 .entry-card-skills {
   display: flex;
+  flex-direction: column;
   gap: 6px;
-  flex-wrap: wrap;
+  align-items: center;
 }
 
 .entry-skill {
@@ -710,6 +698,44 @@ body {
   gap: 8px;
 }
 
+.tournament-format-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tournament-format-button {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 10px 14px;
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.035);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    background-color 140ms ease;
+}
+
+.tournament-format-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  color: var(--text);
+}
+
+.tournament-format-button.active {
+  color: #111111;
+  border-color: rgba(255, 232, 158, 0.55);
+  background: linear-gradient(135deg, #f6edc3, #d8b864);
+}
+
+.tournament-format-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .tournament-summary {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.72);
@@ -789,8 +815,8 @@ body {
   filter: grayscale(0.25);
 }
 
-.tournament-tree-slot.active .tournament-tree-orb,
-.tournament-tree-slot.champion .tournament-tree-orb {
+.tournament-tree-slot.active .tournament-tree-ball-preview,
+.tournament-tree-slot.champion .tournament-tree-ball-preview {
   box-shadow:
     0 0 0 4px rgba(255, 226, 137, 0.15),
     0 0 26px rgba(255, 226, 137, 0.25);
@@ -802,46 +828,27 @@ body {
   justify-items: center;
 }
 
-.tournament-tree-balls,
-.tournament-tree-stems,
-.tournament-tree-bases {
+.tournament-tree-balls {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 18px;
 }
 
-.tournament-tree-orb {
+.tournament-tree-ball-preview {
   position: relative;
   z-index: 2;
   width: 58px;
   height: 58px;
   border-radius: 50%;
   display: block;
-  background: radial-gradient(circle at 30% 28%, #ffffff 0%, var(--member-color) 36%, #050505 100%);
-  border: 3px solid rgba(255, 255, 255, 0.14);
-}
-
-.tournament-tree-stem {
-  width: 12px;
-  height: 54px;
-  margin-top: -2px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06));
-}
-
-.tournament-tree-base {
-  width: 30px;
-  height: 30px;
-  margin-top: -6px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 30% 28%, rgba(255,255,255,0.2), rgba(255,255,255,0.06));
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.08);
+  background: radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02));
+  transition: box-shadow 180ms ease, transform 180ms ease;
 }
 
 .tournament-tree-meta {
   width: 100%;
-  padding: 8px 10px;
+  padding: 4px 10px 8px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -855,7 +862,7 @@ body {
   color: rgba(255, 255, 255, 0.72);
 }
 
-.promotion-target .tournament-tree-orb {
+.promotion-target .tournament-tree-ball-preview {
   animation: promotionPulse 700ms ease;
 }
 
@@ -1309,6 +1316,10 @@ textarea.intro-input {
     width: 100%;
   }
 
+  .tournament-format-tabs {
+    grid-template-columns: 1fr;
+  }
+
   .tournament-tree {
     min-height: 980px;
     overflow-x: auto;
@@ -1318,28 +1329,17 @@ textarea.intro-input {
     width: 132px;
   }
 
-  .tournament-tree-balls,
-  .tournament-tree-stems,
-  .tournament-tree-bases {
+  .tournament-tree-balls {
     gap: 12px;
   }
 
-  .tournament-tree-orb {
+  .tournament-tree-ball-preview {
     width: 46px;
     height: 46px;
   }
 
-  .tournament-tree-stem {
-    height: 46px;
-  }
-
-  .tournament-tree-base {
-    width: 24px;
-    height: 24px;
-  }
-
-  .entry-stage-cards {
-    grid-template-columns: 1fr;
+  .entry-vs-row {
+    flex-direction: column;
   }
 
   .editor-grid {

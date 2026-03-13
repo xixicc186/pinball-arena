@@ -1724,7 +1724,7 @@ function fitText(ctx, text, maxWidth, maxSize, minSize = 16) {
 
 // ── VS 横幅（持久显示在角斗场顶部）────────────────────────────────────────────
 
-function makeBannerPlayerEl(character, ballCssSize, ballCanvasSize) {
+function makeBannerPlayerEl(character, ballCssSize, ballCanvasSize, teamMode = false) {
   const intro = getIntroText(character.id, character);
   const skillsHtml = [
     intro.basicAttackName ? `<div class="entry-skill"><span class="entry-skill-label">普攻</span><span class="entry-skill-name">${intro.basicAttackName}</span></div>` : "",
@@ -1750,7 +1750,8 @@ function makeBannerPlayerEl(character, ballCssSize, ballCanvasSize) {
 // teams: optional [[char, char], [char, char]] for 2v2 team layout
 function showMatchVsBanner(characters, teams) {
   const dpr = window.devicePixelRatio || 1;
-  const ballCssSize = 52;
+  const isTeam = teams && teams.length === 2;
+  const ballCssSize = isTeam ? 34 : 52;
   const ballCanvasSize = Math.round(ballCssSize * dpr);
 
   matchVsBanner.innerHTML = "";
@@ -1763,7 +1764,7 @@ function showMatchVsBanner(characters, teams) {
     bannerEssenceData.set(character.id, { essence: 0, maxEssence: character.stats?.maxEssence ?? 5 });
   }
 
-  if (teams && teams.length === 2) {
+  if (isTeam) {
     // Team layout: [col1] VS [col2]
     const layout = document.createElement("div");
     layout.className = "banner-team-layout";
@@ -1780,7 +1781,7 @@ function showMatchVsBanner(characters, teams) {
       col.className = "banner-team-col";
 
       teamChars.forEach((character) => {
-        const player = makeBannerPlayerEl(character, ballCssSize, ballCanvasSize);
+        const player = makeBannerPlayerEl(character, ballCssSize, ballCanvasSize, true);
         col.appendChild(player);
         registerPlayer(character, player);
       });
@@ -1938,23 +1939,22 @@ function drawBannerPlayerOnCanvas(ctx, character, cx, nameY, subCy, barY, player
 }
 
 function drawBannerOnCanvas(ctx, W, H, px, characters, elapsed, teams) {
-  // All sizes in CSS-equivalent px, then multiplied by px → native canvas pixels
-  const nameSz  = Math.round(30 * px);
-  const vsSz    = Math.round(22 * px);
-  const skillSz = Math.round(13 * px);
-  const ballSz  = Math.round(52 * px);
-  const barH    = Math.round(5 * px);
-  const gap     = Math.round(8 * px);
-  const padTop  = Math.round(10 * px);
-  const rowGap  = Math.round(10 * px); // gap between players in team column
-
-  // Player block height (name + sub + bar)
-  const subH    = ballSz;
-  const playerBlockH = nameSz + gap + subH + gap + barH;
-
-  // Total banner height: for teams, 2 stacked player blocks; for solo, 1 player block
   const isTeam = teams && teams.length === 2;
-  const bannerH = padTop + (isTeam ? playerBlockH * 2 + rowGap : playerBlockH) + Math.round(14 * px);
+
+  // CSS-equivalent sizes × px → native canvas pixels
+  // Team mode uses smaller values to match the CSS overrides in .banner-team-col
+  const nameSz  = Math.round((isTeam ? 18 : 30) * px);
+  const vsSz    = Math.round((isTeam ? 20 : 22) * px);
+  const skillSz = Math.round(11 * px);  // matches .entry-skill font-size: 11px
+  const ballSz  = Math.round((isTeam ? 34 : 52) * px);
+  const barH    = Math.round(5 * px);
+  const gap     = Math.round((isTeam ? 3 : 6) * px);   // .banner-vs-player gap
+  const padTop  = Math.round(10 * px);
+  const rowGap  = Math.round((isTeam ? 5 : 0) * px);   // gap between players in team col
+
+  const subH         = ballSz;
+  const playerBlockH = nameSz + gap + subH + gap + barH;
+  const bannerH      = padTop + (isTeam ? playerBlockH * 2 + rowGap : playerBlockH) + Math.round(14 * px);
 
   // Background gradient
   const grd = ctx.createLinearGradient(0, 0, 0, bannerH + Math.round(10 * px));
@@ -1964,15 +1964,13 @@ function drawBannerOnCanvas(ctx, W, H, px, characters, elapsed, teams) {
   ctx.fillRect(0, 0, W, bannerH + Math.round(10 * px));
 
   if (isTeam) {
-    // Team layout: [left col] [VS] [right col]
-    const vsColW     = vsSz * 3.0;
-    const teamColW   = (W - vsColW) / 2;
-    const leftCx     = teamColW / 2;
-    const rightCx    = teamColW + vsColW + teamColW / 2;
-    const vsCx       = teamColW + vsColW / 2;
+    const vsColW   = vsSz * 3.0;
+    const teamColW = (W - vsColW) / 2;
+    const leftCx   = teamColW / 2;
+    const rightCx  = teamColW + vsColW + teamColW / 2;
+    const vsCx     = teamColW + vsColW / 2;
+    const vsCy     = padTop + playerBlockH + rowGap / 2;
 
-    // VS in the vertical center of the banner content area
-    const vsCy = padTop + playerBlockH + rowGap / 2;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "rgba(255,255,255,0.5)";
@@ -1990,16 +1988,14 @@ function drawBannerOnCanvas(ctx, W, H, px, characters, elapsed, teams) {
       });
     });
   } else {
-    // Solo layout: flat row
-    const n = characters.length;
+    const n          = characters.length;
     const vsColW     = vsSz * 3.0;
     const playerColW = (W - vsColW * (n - 1)) / n;
     const playerCx   = (i) => playerColW * (i + 0.5) + vsColW * i;
     const vsCx       = (i) => playerColW * (i + 1) + vsColW * (i + 0.5);
-
-    const nameY = padTop + nameSz / 2;
-    const subCy = padTop + nameSz + gap + subH / 2;
-    const barY  = padTop + nameSz + gap + subH + gap;
+    const nameY      = padTop + nameSz / 2;
+    const subCy      = padTop + nameSz + gap + subH / 2;
+    const barY       = padTop + nameSz + gap + subH + gap;
 
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";

@@ -318,18 +318,27 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 12px;
 }
 
 .banner-team-col {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 5px; /* tighter gap between team members */
+}
+
+/* Scale down player elements inside team columns */
+.banner-team-col .banner-vs-name {
+  font-size: clamp(12px, 1.6vw, 18px);
+}
+
+.banner-team-col .banner-vs-player {
+  gap: 3px;
 }
 
 .banner-team-vs-sep {
-  font-size: clamp(16px, 2.4vw, 26px);
+  font-size: clamp(14px, 2vw, 20px);
   font-weight: 900;
   color: rgba(255, 255, 255, 0.5);
   flex-shrink: 0;

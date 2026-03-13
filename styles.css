@@ -297,6 +297,22 @@ body {
   flex-shrink: 0;
 }
 
+.banner-essence-bar {
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.banner-essence-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--char-color);
+  width: 0%;
+  transition: width 180ms ease;
+}
+
 .entry-card-skills {
   display: flex;
   flex-direction: column;

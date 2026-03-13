@@ -2475,18 +2475,6 @@ export class ArenaGame {
       ctx.fillText(hpText, actor.position.x, actor.position.y + 1);
       ctx.restore();
 
-      for (let index = 0; index < actor.stats.maxEssence; index += 1) {
-        const angle = -Math.PI / 2 + ((Math.PI * 2) / Math.max(actor.stats.maxEssence, 1)) * index;
-        const dotPosition = {
-          x: actor.position.x + Math.cos(angle) * (actor.radius + 16),
-          y: actor.position.y + Math.sin(angle) * (actor.radius + 16),
-        };
-        ctx.fillStyle = index < actor.essence ? "#ffe17f" : "rgba(255,255,255,0.12)";
-        ctx.beginPath();
-        ctx.arc(dotPosition.x, dotPosition.y, 3.1, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
       if (state.matchOver && actor.alive) {
         ctx.strokeStyle = "rgba(255, 240, 176, 0.95)";
         ctx.lineWidth = 3;

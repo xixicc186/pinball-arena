@@ -130,6 +130,10 @@ const recordingState = {
 
 const entryState = { active: false };
 let bannerAnimFrameId = null;
+let bannerCanvasLoopId = null;
+let bannerCanvasStart = 0;
+const bannerEssenceData = new Map(); // characterId → { essence, maxEssence }
+const bannerEssenceFills = new Map(); // characterId → fill element
 const battleFeedItems = [];
 const tournamentPreviewBuffers = new Map();
 
@@ -1726,6 +1730,8 @@ function showMatchVsBanner(characters) {
   const ballCanvasSize = Math.round(ballCssSize * dpr);
 
   matchVsBanner.innerHTML = "";
+  bannerEssenceFills.clear();
+  bannerEssenceData.clear();
 
   const vsRow = document.createElement("div");
   vsRow.className = "banner-vs-row";
@@ -1753,8 +1759,15 @@ function showMatchVsBanner(characters) {
         <canvas class="banner-vs-ball" width="${ballCanvasSize}" height="${ballCanvasSize}" style="width:${ballCssSize}px;height:${ballCssSize}px;"></canvas>
         <div class="entry-card-skills">${skillsHtml}</div>
       </div>
+      <div class="banner-essence-bar">
+        <div class="banner-essence-fill"></div>
+      </div>
     `;
     vsRow.appendChild(player);
+
+    const fill = player.querySelector(".banner-essence-fill");
+    bannerEssenceFills.set(character.id, fill);
+    bannerEssenceData.set(character.id, { essence: 0, maxEssence: character.stats?.maxEssence ?? 5 });
   });
 
   matchVsBanner.appendChild(vsRow);
@@ -1764,6 +1777,9 @@ function showMatchVsBanner(characters) {
 
 function hideMatchVsBanner() {
   stopBannerBallLoop();
+  stopBannerCanvasOverlay();
+  bannerEssenceFills.clear();
+  bannerEssenceData.clear();
   matchVsBanner.classList.add("hidden");
   matchVsBanner.innerHTML = "";
 }
@@ -1791,6 +1807,137 @@ function startBannerBallLoop(characters) {
     bannerAnimFrameId = requestAnimationFrame(loop);
   };
   bannerAnimFrameId = requestAnimationFrame(loop);
+}
+
+function startBannerCanvasOverlay(characters) {
+  stopBannerCanvasOverlay();
+  bannerCanvasStart = performance.now();
+
+  const loop = () => {
+    if (matchVsBanner.classList.contains("hidden")) {
+      bannerCanvasLoopId = null;
+      return;
+    }
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.width / dpr;
+    const H = canvas.height / dpr;
+    const elapsed = (performance.now() - bannerCanvasStart) / 1000;
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    drawBannerOnCanvas(ctx, W, H, characters, elapsed);
+    ctx.restore();
+
+    bannerCanvasLoopId = requestAnimationFrame(loop);
+  };
+  bannerCanvasLoopId = requestAnimationFrame(loop);
+}
+
+function stopBannerCanvasOverlay() {
+  if (bannerCanvasLoopId != null) {
+    cancelAnimationFrame(bannerCanvasLoopId);
+    bannerCanvasLoopId = null;
+  }
+}
+
+function drawBannerOnCanvas(ctx, W, H, characters, elapsed) {
+  const dpr = window.devicePixelRatio || 1;
+  const n = characters.length;
+
+  const nameSz  = Math.round(Math.min(W * 0.05, 26));
+  const vsSz    = Math.round(Math.min(W * 0.042, 22));
+  const skillSz = Math.round(Math.min(W * 0.025, 14));
+  const ballSz  = Math.round(Math.min(W * 0.088, 48));
+  const barH    = 5;
+  const padTop  = 10;
+
+  // Banner total height
+  const subH     = ballSz;
+  const bannerH  = padTop + nameSz + 10 + subH + 10 + barH + 14;
+
+  // Background gradient
+  const grd = ctx.createLinearGradient(0, 0, 0, bannerH + 10);
+  grd.addColorStop(0, "rgba(4,4,4,0.80)");
+  grd.addColorStop(1, "rgba(4,4,4,0)");
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, bannerH + 10);
+
+  // Column layout
+  const vsColW    = vsSz * 3.0;
+  const playerColW = (W - vsColW * (n - 1)) / n;
+  const playerCx  = (i) => playerColW * (i + 0.5) + vsColW * i;
+  const vsCx      = (i) => playerColW * (i + 1) + vsColW * (i + 0.5);
+
+  const nameY  = padTop + nameSz / 2;
+  const subCy  = padTop + nameSz + 10 + subH / 2;
+  const barY   = padTop + nameSz + 10 + subH + 10;
+
+  // VS separators (aligned with names)
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  ctx.font = `900 ${vsSz}px "Microsoft YaHei UI", sans-serif`;
+  for (let i = 0; i < n - 1; i++) {
+    ctx.fillText("VS", vsCx(i), nameY);
+  }
+
+  characters.forEach((character, i) => {
+    const cx = playerCx(i);
+    const intro = getIntroText(character.id, character);
+
+    // Name
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = character.color;
+    ctx.font = `900 ${nameSz}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText(intro.name, cx, nameY);
+
+    // Ball + skill names (side by side, centered under name)
+    const skills = [
+      intro.basicAttackName ? { label: "普攻", name: intro.basicAttackName } : null,
+      intro.ultimateName   ? { label: "大招", name: intro.ultimateName }   : null,
+    ].filter(Boolean);
+
+    // Measure skill block width to center ball+skills together
+    ctx.font = `600 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
+    const maxSkillW = skills.reduce((max, s) => Math.max(max, ctx.measureText(s.label + " " + s.name).width), 0);
+    const subBlockW = ballSz + 8 + maxSkillW;
+    const ballCx  = cx - subBlockW / 2 + ballSz / 2;
+    const skillX  = cx - subBlockW / 2 + ballSz + 8;
+
+    const offCanvas = document.createElement("canvas");
+    offCanvas.width  = Math.round(ballSz * dpr);
+    offCanvas.height = Math.round(ballSz * dpr);
+    game.renderBallPreview(offCanvas.getContext("2d"), character, elapsed);
+    ctx.drawImage(offCanvas, ballCx - ballSz / 2, subCy - ballSz / 2, ballSz, ballSz);
+
+    skills.forEach(({ label, name: skillName }, si) => {
+      const sy = subCy + (si - (skills.length - 1) / 2) * (skillSz + 5);
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.font = `400 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
+      const lw = ctx.measureText(label + " ").width;
+      ctx.fillStyle = "rgba(255,255,255,0.4)";
+      ctx.fillText(label + " ", skillX, sy);
+      ctx.font = `600 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.fillText(skillName, skillX + lw, sy);
+    });
+
+    // Essence bar
+    const barW = Math.min(playerColW * 0.72, 140);
+    const barX = cx - barW / 2;
+    const essData = bannerEssenceData.get(character.id);
+    const ratio = essData && essData.maxEssence > 0 ? essData.essence / essData.maxEssence : 0;
+
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    ctx.fillRect(barX, barY, barW, barH);
+    if (ratio > 0.001) {
+      ctx.fillStyle = character.color;
+      ctx.fillRect(barX, barY, barW * ratio, barH);
+    }
+  });
 }
 
 
@@ -1993,6 +2140,7 @@ async function startMatch({ record = false } = {}) {
     includeEdgeHazards: matchSettings.includeEdgeHazards,
     duelTime: matchSettings.duelTime,
   });
+  if (recordingState.active) startBannerCanvasOverlay(characters);
   game.startEntryTransition();
 
   await new Promise((resolve) => setTimeout(resolve, ENTRY_HOLD_MS));
@@ -2061,6 +2209,7 @@ async function runTournamentMatch(match) {
     includeEdgeHazards: matchSettings.includeEdgeHazards,
     duelTime: matchSettings.duelTime,
   });
+  if (recordingState.active) startBannerCanvasOverlay(competitorChars);
   game.startEntryTransition();
 
   await new Promise((resolve) => setTimeout(resolve, ENTRY_HOLD_MS));
@@ -2195,6 +2344,19 @@ const game = new ArenaGame(canvas, {
     renderScoreboard(snapshot);
     recordingState.latestSnapshot = snapshot;
     renderRecordingFrame(snapshot);
+    // Update essence progress bars
+    if (bannerEssenceFills.size > 0) {
+      for (const actor of snapshot.actors) {
+        const fill = bannerEssenceFills.get(actor.characterId);
+        if (fill) {
+          const pct = actor.maxEssence > 0 ? (actor.essence / actor.maxEssence) * 100 : 0;
+          fill.style.width = `${pct}%`;
+        }
+        if (bannerEssenceData.has(actor.characterId)) {
+          bannerEssenceData.set(actor.characterId, { essence: actor.essence, maxEssence: actor.maxEssence });
+        }
+      }
+    }
   },
   onMatchStart(snapshot) {
     overlay.classList.add("hidden");

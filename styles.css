@@ -238,121 +238,69 @@ body {
 }
 
 /* ── 出场动画 ── */
-.entry-stage {
+/* ── 持久 VS 横幅 ── */
+.match-vs-banner {
   position: absolute;
-  inset: 0;
-  z-index: 4;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px 24px;
-  background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.07), transparent 40%),
-    rgba(4, 4, 4, 0.88);
-  transition: opacity 300ms ease;
-  overflow-y: auto;
-}
-
-.entry-stage.hidden {
-  opacity: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  padding: 10px 16px 18px;
+  background: linear-gradient(to bottom, rgba(4, 4, 4, 0.72) 0%, rgba(4, 4, 4, 0) 100%);
   pointer-events: none;
 }
 
-/* ── 出场动画 outro 转场 ── */
-.entry-stage-outro {
-  opacity: 0;
-  pointer-events: none;
-  /* 淡出场地：让场地在小球飞行过程中显现 */
-  transition: opacity 500ms ease !important;
+.match-vs-banner.hidden {
+  display: none;
 }
 
-.entry-stage-outro .entry-vs-row,
-.entry-stage-outro .entry-vs-eyebrow {
-  opacity: 0;
-  transition: opacity 160ms ease;
-}
-
-.entry-stage-inner {
-  width: min(900px, 100%);
+.banner-vs-row {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 24px;
-}
-
-/* VS 入场画面 */
-.entry-vs-eyebrow {
-  color: #f3d2a2;
-  font-size: 12px;
-  letter-spacing: 0.28em;
-  text-transform: uppercase;
-  text-align: center;
-  margin: 0;
-}
-
-.entry-stage-cards {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 24px;
-  width: 100%;
-}
-
-.entry-vs-row {
-  display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  gap: 20px;
-  flex-wrap: wrap;
-  width: 100%;
-  opacity: 0;
-  animation: vs-row-in 380ms ease forwards;
-}
-
-@keyframes vs-row-in {
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.entry-vs-player {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
   gap: 12px;
-  flex: 1;
-  min-width: 160px;
-  max-width: 280px;
+  flex-wrap: wrap;
 }
 
-.entry-vs-ball {
-  display: block;
-  background: transparent;
-  flex-shrink: 0;
+.banner-vs-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
 }
 
-.entry-vs-name {
-  font-size: clamp(26px, 4.5vw, 52px);
+.banner-vs-name {
+  font-size: clamp(18px, 2.6vw, 30px);
   font-weight: 900;
   color: var(--char-color);
+  line-height: 1;
   text-align: center;
-  line-height: 1.1;
 }
 
-.entry-vs-sep {
-  font-size: clamp(22px, 3.8vw, 44px);
+.banner-vs-sep {
+  font-size: clamp(14px, 2vw, 22px);
   font-weight: 900;
-  color: rgba(255, 255, 255, 0.55);
-  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+
+.banner-vs-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.banner-vs-ball {
+  display: block;
+  background: transparent;
   flex-shrink: 0;
 }
 
 .entry-card-skills {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  align-items: center;
+  gap: 4px;
 }
 
 .entry-skill {
@@ -1336,10 +1284,6 @@ textarea.intro-input {
   .tournament-tree-ball-preview {
     width: 46px;
     height: 46px;
-  }
-
-  .entry-vs-row {
-    flex-direction: column;
   }
 
   .editor-grid {

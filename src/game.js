@@ -10,6 +10,8 @@ const WORLD_HEIGHT = 960;
 const GAME_SCALE = 2;
 const MAX_DT = 1 / 30;
 const DEFAULT_DUEL_TIME = 45;
+// 竞技场+横幅整体在 canvas 内的垂直偏移量（world 单位），使内容居中而不顶在最上面
+const RENDER_Y_OFFSET = 62;
 const BASE_ESSENCE_INTERVAL = 3.2;
 const DUEL_ESSENCE_INTERVAL = 1.15;
 const MAX_ESSENCE_ON_FIELD = 6;
@@ -1918,7 +1920,7 @@ export class ArenaGame {
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     const offsetX = 0;
-    const offsetY = 0;
+    const offsetY = RENDER_Y_OFFSET;
     const scaleX = this.canvas.width / WORLD_WIDTH;
     const scaleY = this.canvas.height / WORLD_HEIGHT;
 
@@ -1957,7 +1959,8 @@ export class ArenaGame {
 
   renderBackground(ctx, state) {
     ctx.fillStyle = "#080808";
-    ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    // 向上延伸覆盖 RENDER_Y_OFFSET 偏移产生的顶部空白区域
+    ctx.fillRect(0, -RENDER_Y_OFFSET, WORLD_WIDTH, WORLD_HEIGHT + RENDER_Y_OFFSET);
 
     ctx.save();
     ctx.strokeStyle = "rgba(255,255,255,0.03)";
@@ -2630,6 +2633,14 @@ export class ArenaGame {
     }
 
     ctx.restore();
+  }
+
+  // 返回竞技场多边形顶部边界在 canvas 原生像素中的 Y 坐标（用于对齐横幅）
+  getArenaTopCanvasY() {
+    if (!this.state) return 0;
+    const scaleY = this.canvas.height / WORLD_HEIGHT;
+    const minY = Math.min(...this.state.arena.points.map((p) => p.y));
+    return (RENDER_Y_OFFSET + minY) * scaleY;
   }
 
   // Render a character ball preview onto an arbitrary canvas context.

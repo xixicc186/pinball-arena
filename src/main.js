@@ -132,6 +132,7 @@ const entryState = { active: false };
 let bannerAnimFrameId = null;
 let bannerCanvasLoopId = null;
 let bannerCanvasStart = 0;
+let bannerOverlayActive = false;
 const bannerEssenceData = new Map(); // characterId → { essence, maxEssence }
 const bannerEssenceFills = new Map(); // characterId → fill element
 const battleFeedItems = [];
@@ -1811,7 +1812,7 @@ function showMatchVsBanner(characters, teams) {
     matchVsBanner.appendChild(vsRow);
   }
 
-  matchVsBanner.classList.remove("hidden");
+  // HTML 横幅已弃用，仅保留 canvas 绘制版本
   startBannerBallLoop(characters);
 }
 
@@ -1852,13 +1853,17 @@ function startBannerBallLoop(characters) {
 function startBannerCanvasOverlay(characters, teams) {
   stopBannerCanvasOverlay();
   bannerCanvasStart = performance.now();
+  bannerOverlayActive = true;
 
   // px = native canvas pixels per CSS display pixel (fixed for this match session)
   const rect = canvas.getBoundingClientRect();
   const px = rect.width > 0 ? canvas.width / rect.width : 2;
 
+  // 竞技场顶部的 canvas 原生像素 Y（用于将横幅紧贴竞技场上方）
+  const arenaTopY = game.getArenaTopCanvasY();
+
   const loop = () => {
-    if (matchVsBanner.classList.contains("hidden")) {
+    if (!bannerOverlayActive) {
       bannerCanvasLoopId = null;
       return;
     }
@@ -1868,7 +1873,7 @@ function startBannerCanvasOverlay(characters, teams) {
     const elapsed = (performance.now() - bannerCanvasStart) / 1000;
 
     ctx.save();
-    drawBannerOnCanvas(ctx, W, H, px, characters, elapsed, teams);
+    drawBannerOnCanvas(ctx, W, H, px, characters, elapsed, teams, arenaTopY);
     ctx.restore();
 
     bannerCanvasLoopId = requestAnimationFrame(loop);
@@ -1877,6 +1882,7 @@ function startBannerCanvasOverlay(characters, teams) {
 }
 
 function stopBannerCanvasOverlay() {
+  bannerOverlayActive = false;
   if (bannerCanvasLoopId != null) {
     cancelAnimationFrame(bannerCanvasLoopId);
     bannerCanvasLoopId = null;
@@ -1938,7 +1944,7 @@ function drawBannerPlayerOnCanvas(ctx, character, cx, nameY, subCy, barY, player
   }
 }
 
-function drawBannerOnCanvas(ctx, W, H, px, characters, elapsed, teams) {
+function drawBannerOnCanvas(ctx, W, H, px, characters, elapsed, teams, yStart = 0) {
   const isTeam = teams && teams.length === 2;
 
   // CSS-equivalent sizes × px → native canvas pixels
@@ -1955,6 +1961,11 @@ function drawBannerOnCanvas(ctx, W, H, px, characters, elapsed, teams) {
   const subH         = ballSz;
   const playerBlockH = nameSz + gap + subH + gap + barH;
   const bannerH      = padTop + (isTeam ? playerBlockH * 2 + rowGap : playerBlockH) + Math.round(14 * px);
+
+  // 将横幅底部对齐到 yStart（竞技场顶部），使横幅紧贴竞技场上方
+  if (yStart > 0) {
+    ctx.translate(0, yStart - bannerH);
+  }
 
   // Background gradient
   const grd = ctx.createLinearGradient(0, 0, 0, bannerH + Math.round(10 * px));
@@ -2211,7 +2222,7 @@ async function startMatch({ record = false } = {}) {
     includeEdgeHazards: matchSettings.includeEdgeHazards,
     duelTime: matchSettings.duelTime,
   });
-  if (recordingState.active) startBannerCanvasOverlay(characters);
+  startBannerCanvasOverlay(characters);
   game.startEntryTransition();
 
   await new Promise((resolve) => setTimeout(resolve, ENTRY_HOLD_MS));
@@ -2283,7 +2294,7 @@ async function runTournamentMatch(match) {
     includeEdgeHazards: matchSettings.includeEdgeHazards,
     duelTime: matchSettings.duelTime,
   });
-  if (recordingState.active) startBannerCanvasOverlay(competitorChars, teamGroups);
+  startBannerCanvasOverlay(competitorChars, teamGroups);
   game.startEntryTransition();
 
   await new Promise((resolve) => setTimeout(resolve, ENTRY_HOLD_MS));

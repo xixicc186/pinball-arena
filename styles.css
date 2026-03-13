@@ -130,6 +130,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: flex-start;
+  padding-top: 52px;
 }
 
 #arena-canvas {
@@ -144,7 +145,7 @@ body {
 
 .arena-top-left {
   position: absolute;
-  top: 16px;
+  top: 68px;
   left: 16px;
   z-index: 2;
   width: min(280px, calc(100% - 32px));
@@ -241,7 +242,7 @@ body {
 /* ── 持久 VS 横幅 ── */
 .match-vs-banner {
   position: absolute;
-  top: 0;
+  top: 52px;
   left: 0;
   right: 0;
   z-index: 3;
@@ -1266,8 +1267,16 @@ textarea.intro-input {
     border-radius: 20px;
   }
 
+  .arena-panel {
+    padding-top: 40px;
+  }
+
+  .match-vs-banner {
+    top: 40px;
+  }
+
   .arena-top-left {
-    top: 12px;
+    top: 52px;
     left: 12px;
     width: min(240px, calc(100% - 24px));
   }

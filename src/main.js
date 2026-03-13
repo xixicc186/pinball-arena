@@ -54,34 +54,34 @@ const RECORDING_END_HOLD_MS = 2500;
 const ENTRY_HOLD_MS = 2000;
 const TOURNAMENT_FORMATS = {
   team: {
-    key: “team”,
-    title: “组队赛”,
+    key: "team",
+    title: "组队赛",
     requiredRoster: 16,
     groupSize: 2,
-    lineupLabel: “双人小组”,
-    stageHeading: “双人组”,
-    finalLabel: “决胜组”,
-    drawTitle: “赛事抽签分组”,
-    drawSubtitle: “16 名角色随机分成 8 个双人小组”,
-    summaryIdle: “点击「开始赛事」或「录制整届赛事」自动抽签并开始所有对局。”,
-    summaryReady: “已生成 8 个双人小组，点击「开始赛事」直接开始。”,
-    championTitle: “决胜组出线”,
-    championSubtitle: “成为本届冠军组”,
+    lineupLabel: "双人小组",
+    stageHeading: "双人组",
+    finalLabel: "决胜组",
+    drawTitle: "赛事抽签分组",
+    drawSubtitle: "16 名角色随机分成 8 个双人小组",
+    summaryIdle: "点击「开始赛事」或「录制整届赛事」自动抽签并开始所有对局。",
+    summaryReady: "已生成 8 个双人小组，点击「开始赛事」直接开始。",
+    championTitle: "决胜组出线",
+    championSubtitle: "成为本届冠军组",
   },
   solo: {
-    key: “solo”,
-    title: “个人战”,
+    key: "solo",
+    title: "个人战",
     requiredRoster: 8,
     groupSize: 1,
-    lineupLabel: “个人选手”,
-    stageHeading: “个人”,
-    finalLabel: “决胜局”,
-    drawTitle: “个人战抽签”,
-    drawSubtitle: “8 名角色随机进入个人战赛程”,
-    summaryIdle: “点击「开始赛事」或「录制整届赛事」自动抽签并开始整届个人战。”,
-    summaryReady: “已生成 8 名个人选手，点击「开始赛事」直接开始。”,
-    championTitle: “冠军诞生”,
-    championSubtitle: “赢下本届个人战”,
+    lineupLabel: "个人选手",
+    stageHeading: "个人",
+    finalLabel: "决胜局",
+    drawTitle: "个人战抽签",
+    drawSubtitle: "8 名角色随机进入个人战赛程",
+    summaryIdle: "点击「开始赛事」或「录制整届赛事」自动抽签并开始整届个人战。",
+    summaryReady: "已生成 8 名个人选手，点击「开始赛事」直接开始。",
+    championTitle: "冠军诞生",
+    championSubtitle: "赢下本届个人战",
   },
 };
 const TOURNAMENT_DRAW_MS = 3200;
@@ -247,7 +247,7 @@ function updateRosterStatus() {
   rosterStatusElement.textContent = classicText;
   tournamentStatusElement.textContent = tournamentText;
   modalRosterStatusElement.textContent =
-    `${appMode === "tournament" ? tournamentText : classicText}。点击卡片切换编辑对象，标记为“出战”的角色将参与当前玩法。`;
+    `${appMode === "tournament" ? tournamentText : classicText}。点击卡片切换编辑对象，标记为"出战"的角色将参与当前玩法。`;
 
   if (entryState.active) {
     startButton.disabled = true;

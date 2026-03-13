@@ -2378,6 +2378,11 @@ export class ArenaGame {
   }
 
   renderActors(ctx, state) {
+    // Build team color map: sort unique teamIds, assign red/blue
+    const TEAM_RING_COLORS = ["rgba(255,70,70,0.85)", "rgba(60,160,255,0.85)"];
+    const uniqueTeamIds = [...new Set(state.actors.map((a) => a.teamId).filter(Boolean))].sort();
+    const teamColorMap = new Map(uniqueTeamIds.map((id, i) => [id, TEAM_RING_COLORS[i % TEAM_RING_COLORS.length]]));
+
     for (const actor of state.actors) {
       ctx.save();
       if (!actor.alive) {
@@ -2388,6 +2393,20 @@ export class ArenaGame {
 
       if (actor.characterId === "eagle-eye" && actor.state.aimingTargetId && actor.alive) {
         this.renderSniperAimLine(ctx, actor, state);
+      }
+
+      // Team color ring (drawn before other rings so it's behind status effects)
+      if (actor.alive && uniqueTeamIds.length >= 2 && actor.teamId != null) {
+        const teamColor = teamColorMap.get(actor.teamId);
+        ctx.save();
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = teamColor;
+        ctx.strokeStyle = teamColor;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(actor.position.x, actor.position.y, actor.radius + 14, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
       }
 
       if (actor.state.invulnerableTime > 0) {

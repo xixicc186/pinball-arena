@@ -1724,7 +1724,31 @@ function fitText(ctx, text, maxWidth, maxSize, minSize = 16) {
 
 // ── VS 横幅（持久显示在角斗场顶部）────────────────────────────────────────────
 
-function showMatchVsBanner(characters) {
+function makeBannerPlayerEl(character, ballCssSize, ballCanvasSize) {
+  const intro = getIntroText(character.id, character);
+  const skillsHtml = [
+    intro.basicAttackName ? `<div class="entry-skill"><span class="entry-skill-label">普攻</span><span class="entry-skill-name">${intro.basicAttackName}</span></div>` : "",
+    intro.ultimateName ? `<div class="entry-skill"><span class="entry-skill-label">大招</span><span class="entry-skill-name">${intro.ultimateName}</span></div>` : "",
+  ].join("");
+
+  const player = document.createElement("div");
+  player.className = "banner-vs-player";
+  player.style.setProperty("--char-color", character.color);
+  player.innerHTML = `
+    <div class="banner-vs-name">${intro.name}</div>
+    <div class="banner-vs-sub">
+      <canvas class="banner-vs-ball" width="${ballCanvasSize}" height="${ballCanvasSize}" style="width:${ballCssSize}px;height:${ballCssSize}px;"></canvas>
+      <div class="entry-card-skills">${skillsHtml}</div>
+    </div>
+    <div class="banner-essence-bar">
+      <div class="banner-essence-fill"></div>
+    </div>
+  `;
+  return player;
+}
+
+// teams: optional [[char, char], [char, char]] for 2v2 team layout
+function showMatchVsBanner(characters, teams) {
   const dpr = window.devicePixelRatio || 1;
   const ballCssSize = 52;
   const ballCanvasSize = Math.round(ballCssSize * dpr);
@@ -1733,44 +1757,59 @@ function showMatchVsBanner(characters) {
   bannerEssenceFills.clear();
   bannerEssenceData.clear();
 
-  const vsRow = document.createElement("div");
-  vsRow.className = "banner-vs-row";
-
-  characters.forEach((character, index) => {
-    if (index > 0) {
-      const sep = document.createElement("span");
-      sep.className = "banner-vs-sep";
-      sep.textContent = "VS";
-      vsRow.appendChild(sep);
-    }
-
-    const intro = getIntroText(character.id, character);
-    const skillsHtml = [
-      intro.basicAttackName ? `<div class="entry-skill"><span class="entry-skill-label">普攻</span><span class="entry-skill-name">${intro.basicAttackName}</span></div>` : "",
-      intro.ultimateName ? `<div class="entry-skill"><span class="entry-skill-label">大招</span><span class="entry-skill-name">${intro.ultimateName}</span></div>` : "",
-    ].join("");
-
-    const player = document.createElement("div");
-    player.className = "banner-vs-player";
-    player.style.setProperty("--char-color", character.color);
-    player.innerHTML = `
-      <div class="banner-vs-name">${intro.name}</div>
-      <div class="banner-vs-sub">
-        <canvas class="banner-vs-ball" width="${ballCanvasSize}" height="${ballCanvasSize}" style="width:${ballCssSize}px;height:${ballCssSize}px;"></canvas>
-        <div class="entry-card-skills">${skillsHtml}</div>
-      </div>
-      <div class="banner-essence-bar">
-        <div class="banner-essence-fill"></div>
-      </div>
-    `;
-    vsRow.appendChild(player);
-
-    const fill = player.querySelector(".banner-essence-fill");
+  function registerPlayer(character, playerEl) {
+    const fill = playerEl.querySelector(".banner-essence-fill");
     bannerEssenceFills.set(character.id, fill);
     bannerEssenceData.set(character.id, { essence: 0, maxEssence: character.stats?.maxEssence ?? 5 });
-  });
+  }
 
-  matchVsBanner.appendChild(vsRow);
+  if (teams && teams.length === 2) {
+    // Team layout: [col1] VS [col2]
+    const layout = document.createElement("div");
+    layout.className = "banner-team-layout";
+
+    teams.forEach((teamChars, ti) => {
+      if (ti > 0) {
+        const sep = document.createElement("span");
+        sep.className = "banner-team-vs-sep";
+        sep.textContent = "VS";
+        layout.appendChild(sep);
+      }
+
+      const col = document.createElement("div");
+      col.className = "banner-team-col";
+
+      teamChars.forEach((character) => {
+        const player = makeBannerPlayerEl(character, ballCssSize, ballCanvasSize);
+        col.appendChild(player);
+        registerPlayer(character, player);
+      });
+
+      layout.appendChild(col);
+    });
+
+    matchVsBanner.appendChild(layout);
+  } else {
+    // Solo layout: flat row with VS between each
+    const vsRow = document.createElement("div");
+    vsRow.className = "banner-vs-row";
+
+    characters.forEach((character, index) => {
+      if (index > 0) {
+        const sep = document.createElement("span");
+        sep.className = "banner-vs-sep";
+        sep.textContent = "VS";
+        vsRow.appendChild(sep);
+      }
+
+      const player = makeBannerPlayerEl(character, ballCssSize, ballCanvasSize);
+      vsRow.appendChild(player);
+      registerPlayer(character, player);
+    });
+
+    matchVsBanner.appendChild(vsRow);
+  }
+
   matchVsBanner.classList.remove("hidden");
   startBannerBallLoop(characters);
 }
@@ -1809,7 +1848,7 @@ function startBannerBallLoop(characters) {
   bannerAnimFrameId = requestAnimationFrame(loop);
 }
 
-function startBannerCanvasOverlay(characters) {
+function startBannerCanvasOverlay(characters, teams) {
   stopBannerCanvasOverlay();
   bannerCanvasStart = performance.now();
 
@@ -1828,7 +1867,7 @@ function startBannerCanvasOverlay(characters) {
     const elapsed = (performance.now() - bannerCanvasStart) / 1000;
 
     ctx.save();
-    drawBannerOnCanvas(ctx, W, H, px, characters, elapsed);
+    drawBannerOnCanvas(ctx, W, H, px, characters, elapsed, teams);
     ctx.restore();
 
     bannerCanvasLoopId = requestAnimationFrame(loop);
@@ -1843,9 +1882,62 @@ function stopBannerCanvasOverlay() {
   }
 }
 
-function drawBannerOnCanvas(ctx, W, H, px, characters, elapsed) {
-  const n = characters.length;
+function drawBannerPlayerOnCanvas(ctx, character, cx, nameY, subCy, barY, playerColW, ballSz, gap, barH, nameSz, skillSz, px, elapsed) {
+  const intro = getIntroText(character.id, character);
 
+  // Name
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = character.color;
+  ctx.font = `900 ${nameSz}px "Microsoft YaHei UI", sans-serif`;
+  ctx.fillText(intro.name, cx, nameY);
+
+  // Ball + skill names
+  const skills = [
+    intro.basicAttackName ? { label: "普攻", name: intro.basicAttackName } : null,
+    intro.ultimateName   ? { label: "大招", name: intro.ultimateName }   : null,
+  ].filter(Boolean);
+
+  ctx.font = `600 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
+  const maxSkillW = skills.reduce((max, s) => Math.max(max, ctx.measureText(s.label + " " + s.name).width), 0);
+  const subBlockW = ballSz + gap + maxSkillW;
+  const ballCx = cx - subBlockW / 2 + ballSz / 2;
+  const skillX = cx - subBlockW / 2 + ballSz + gap;
+
+  const offCanvas = document.createElement("canvas");
+  offCanvas.width  = ballSz;
+  offCanvas.height = ballSz;
+  game.renderBallPreview(offCanvas.getContext("2d"), character, elapsed);
+  ctx.drawImage(offCanvas, ballCx - ballSz / 2, subCy - ballSz / 2, ballSz, ballSz);
+
+  skills.forEach(({ label, name: skillName }, si) => {
+    const sy = subCy + (si - (skills.length - 1) / 2) * (skillSz + Math.round(5 * px));
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.font = `400 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
+    const lw = ctx.measureText(label + " ").width;
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.fillText(label + " ", skillX, sy);
+    ctx.font = `600 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.fillText(skillName, skillX + lw, sy);
+  });
+
+  // Essence bar
+  const barW = Math.min(playerColW * 0.72, Math.round(140 * px));
+  const barX = cx - barW / 2;
+  const essData = bannerEssenceData.get(character.id);
+  const ratio = essData && essData.maxEssence > 0 ? essData.essence / essData.maxEssence : 0;
+
+  ctx.fillStyle = "rgba(255,255,255,0.12)";
+  ctx.fillRect(barX, barY, barW, barH);
+  if (ratio > 0.001) {
+    ctx.fillStyle = character.color;
+    ctx.fillRect(barX, barY, barW * ratio, barH);
+  }
+}
+
+function drawBannerOnCanvas(ctx, W, H, px, characters, elapsed, teams) {
   // All sizes in CSS-equivalent px, then multiplied by px → native canvas pixels
   const nameSz  = Math.round(30 * px);
   const vsSz    = Math.round(22 * px);
@@ -1854,10 +1946,15 @@ function drawBannerOnCanvas(ctx, W, H, px, characters, elapsed) {
   const barH    = Math.round(5 * px);
   const gap     = Math.round(8 * px);
   const padTop  = Math.round(10 * px);
+  const rowGap  = Math.round(10 * px); // gap between players in team column
 
-  // Banner total height
+  // Player block height (name + sub + bar)
   const subH    = ballSz;
-  const bannerH = padTop + nameSz + gap + subH + gap + barH + Math.round(14 * px);
+  const playerBlockH = nameSz + gap + subH + gap + barH;
+
+  // Total banner height: for teams, 2 stacked player blocks; for solo, 1 player block
+  const isTeam = teams && teams.length === 2;
+  const bannerH = padTop + (isTeam ? playerBlockH * 2 + rowGap : playerBlockH) + Math.round(14 * px);
 
   // Background gradient
   const grd = ctx.createLinearGradient(0, 0, 0, bannerH + Math.round(10 * px));
@@ -1866,81 +1963,56 @@ function drawBannerOnCanvas(ctx, W, H, px, characters, elapsed) {
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, W, bannerH + Math.round(10 * px));
 
-  // Column layout
-  const vsColW     = vsSz * 3.0;
-  const playerColW = (W - vsColW * (n - 1)) / n;
-  const playerCx   = (i) => playerColW * (i + 0.5) + vsColW * i;
-  const vsCx       = (i) => playerColW * (i + 1) + vsColW * (i + 0.5);
+  if (isTeam) {
+    // Team layout: [left col] [VS] [right col]
+    const vsColW     = vsSz * 3.0;
+    const teamColW   = (W - vsColW) / 2;
+    const leftCx     = teamColW / 2;
+    const rightCx    = teamColW + vsColW + teamColW / 2;
+    const vsCx       = teamColW + vsColW / 2;
 
-  const nameY = padTop + nameSz / 2;
-  const subCy = padTop + nameSz + gap + subH / 2;
-  const barY  = padTop + nameSz + gap + subH + gap;
-
-  // VS separators
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "rgba(255,255,255,0.5)";
-  ctx.font = `900 ${vsSz}px "Microsoft YaHei UI", sans-serif`;
-  for (let i = 0; i < n - 1; i++) {
-    ctx.fillText("VS", vsCx(i), nameY);
-  }
-
-  characters.forEach((character, i) => {
-    const cx = playerCx(i);
-    const intro = getIntroText(character.id, character);
-
-    // Name
+    // VS in the vertical center of the banner content area
+    const vsCy = padTop + playerBlockH + rowGap / 2;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = character.color;
-    ctx.font = `900 ${nameSz}px "Microsoft YaHei UI", sans-serif`;
-    ctx.fillText(intro.name, cx, nameY);
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.font = `900 ${vsSz}px "Microsoft YaHei UI", sans-serif`;
+    ctx.fillText("VS", vsCx, vsCy);
 
-    // Ball + skill names (side by side, centered under name)
-    const skills = [
-      intro.basicAttackName ? { label: "普攻", name: intro.basicAttackName } : null,
-      intro.ultimateName   ? { label: "大招", name: intro.ultimateName }   : null,
-    ].filter(Boolean);
-
-    // Measure skill text to center the ball+skills block
-    ctx.font = `600 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
-    const maxSkillW = skills.reduce((max, s) => Math.max(max, ctx.measureText(s.label + " " + s.name).width), 0);
-    const subBlockW = ballSz + gap + maxSkillW;
-    const ballCx = cx - subBlockW / 2 + ballSz / 2;
-    const skillX = cx - subBlockW / 2 + ballSz + gap;
-
-    const offCanvas = document.createElement("canvas");
-    offCanvas.width  = ballSz;
-    offCanvas.height = ballSz;
-    game.renderBallPreview(offCanvas.getContext("2d"), character, elapsed);
-    ctx.drawImage(offCanvas, ballCx - ballSz / 2, subCy - ballSz / 2, ballSz, ballSz);
-
-    skills.forEach(({ label, name: skillName }, si) => {
-      const sy = subCy + (si - (skills.length - 1) / 2) * (skillSz + Math.round(5 * px));
-      ctx.textAlign = "left";
-      ctx.textBaseline = "middle";
-      ctx.font = `400 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
-      const lw = ctx.measureText(label + " ").width;
-      ctx.fillStyle = "rgba(255,255,255,0.4)";
-      ctx.fillText(label + " ", skillX, sy);
-      ctx.font = `600 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
-      ctx.fillStyle = "rgba(255,255,255,0.85)";
-      ctx.fillText(skillName, skillX + lw, sy);
+    teams.forEach((teamChars, ti) => {
+      const cx = ti === 0 ? leftCx : rightCx;
+      teamChars.forEach((character, pi) => {
+        const baseY = padTop + pi * (playerBlockH + rowGap);
+        const nameY = baseY + nameSz / 2;
+        const subCy = baseY + nameSz + gap + subH / 2;
+        const barY  = baseY + nameSz + gap + subH + gap;
+        drawBannerPlayerOnCanvas(ctx, character, cx, nameY, subCy, barY, teamColW, ballSz, gap, barH, nameSz, skillSz, px, elapsed);
+      });
     });
+  } else {
+    // Solo layout: flat row
+    const n = characters.length;
+    const vsColW     = vsSz * 3.0;
+    const playerColW = (W - vsColW * (n - 1)) / n;
+    const playerCx   = (i) => playerColW * (i + 0.5) + vsColW * i;
+    const vsCx       = (i) => playerColW * (i + 1) + vsColW * (i + 0.5);
 
-    // Essence bar
-    const barW = Math.min(playerColW * 0.72, Math.round(140 * px));
-    const barX = cx - barW / 2;
-    const essData = bannerEssenceData.get(character.id);
-    const ratio = essData && essData.maxEssence > 0 ? essData.essence / essData.maxEssence : 0;
+    const nameY = padTop + nameSz / 2;
+    const subCy = padTop + nameSz + gap + subH / 2;
+    const barY  = padTop + nameSz + gap + subH + gap;
 
-    ctx.fillStyle = "rgba(255,255,255,0.12)";
-    ctx.fillRect(barX, barY, barW, barH);
-    if (ratio > 0.001) {
-      ctx.fillStyle = character.color;
-      ctx.fillRect(barX, barY, barW * ratio, barH);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(255,255,255,0.5)";
+    ctx.font = `900 ${vsSz}px "Microsoft YaHei UI", sans-serif`;
+    for (let i = 0; i < n - 1; i++) {
+      ctx.fillText("VS", vsCx(i), nameY);
     }
-  });
+
+    characters.forEach((character, i) => {
+      drawBannerPlayerOnCanvas(ctx, character, playerCx(i), nameY, subCy, barY, playerColW, ballSz, gap, barH, nameSz, skillSz, px, elapsed);
+    });
+  }
 }
 
 
@@ -2206,13 +2278,16 @@ async function runTournamentMatch(match) {
   updateRecordButton();
 
   const competitorChars = competitors.map((c) => getCharacterById(c.characterId)).filter(Boolean);
-  showMatchVsBanner(competitorChars);
+  const leftChars = leftGroup.members.map((m) => getCharacterById(m.id)).filter(Boolean);
+  const rightChars = rightGroup.members.map((m) => getCharacterById(m.id)).filter(Boolean);
+  const teamGroups = leftChars.length > 0 && rightChars.length > 0 ? [leftChars, rightChars] : null;
+  showMatchVsBanner(competitorChars, teamGroups);
 
   game.start(focusId, competitors, {
     includeEdgeHazards: matchSettings.includeEdgeHazards,
     duelTime: matchSettings.duelTime,
   });
-  if (recordingState.active) startBannerCanvasOverlay(competitorChars);
+  if (recordingState.active) startBannerCanvasOverlay(competitorChars, teamGroups);
   game.startEntryTransition();
 
   await new Promise((resolve) => setTimeout(resolve, ENTRY_HOLD_MS));

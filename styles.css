@@ -313,6 +313,28 @@ body {
   transition: width 180ms ease;
 }
 
+/* Team battle: two vertical columns with VS between */
+.banner-team-layout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.banner-team-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.banner-team-vs-sep {
+  font-size: clamp(16px, 2.4vw, 26px);
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
 .entry-card-skills {
   display: flex;
   flex-direction: column;

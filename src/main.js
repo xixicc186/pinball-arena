@@ -92,7 +92,7 @@ const TOURNAMENT_RESULT_BRACKET_MS = TOURNAMENT_BRACKET_HOLD_MS + 2000;
 const TOURNAMENT_CHAMPION_HOLD_MS = 2600;
 
 let selectedId = CHARACTER_LIBRARY[0].id;
-let selectedRosterIds = new Set();
+let selectedRosterIds = new Set(CHARACTER_LIBRARY.map((c) => c.id));
 let appMode = "classic";
 let tournamentFormat = "team";
 const matchSettings = {

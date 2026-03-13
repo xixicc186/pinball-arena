@@ -111,6 +111,14 @@ body {
   transform: translateY(1px);
 }
 
+.primary-button:disabled,
+.secondary-button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  transform: none;
+  pointer-events: none;
+}
+
 .secondary-button {
   border: 1px solid rgba(255, 255, 255, 0.12);
   padding: 10px 14px;

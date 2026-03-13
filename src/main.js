@@ -1813,20 +1813,22 @@ function startBannerCanvasOverlay(characters) {
   stopBannerCanvasOverlay();
   bannerCanvasStart = performance.now();
 
+  // px = native canvas pixels per CSS display pixel (fixed for this match session)
+  const rect = canvas.getBoundingClientRect();
+  const px = rect.width > 0 ? canvas.width / rect.width : 2;
+
   const loop = () => {
     if (matchVsBanner.classList.contains("hidden")) {
       bannerCanvasLoopId = null;
       return;
     }
     const ctx = canvas.getContext("2d");
-    const dpr = window.devicePixelRatio || 1;
-    const W = canvas.width / dpr;
-    const H = canvas.height / dpr;
+    const W = canvas.width;
+    const H = canvas.height;
     const elapsed = (performance.now() - bannerCanvasStart) / 1000;
 
     ctx.save();
-    ctx.scale(dpr, dpr);
-    drawBannerOnCanvas(ctx, W, H, characters, elapsed);
+    drawBannerOnCanvas(ctx, W, H, px, characters, elapsed);
     ctx.restore();
 
     bannerCanvasLoopId = requestAnimationFrame(loop);
@@ -1841,39 +1843,40 @@ function stopBannerCanvasOverlay() {
   }
 }
 
-function drawBannerOnCanvas(ctx, W, H, characters, elapsed) {
-  const dpr = window.devicePixelRatio || 1;
+function drawBannerOnCanvas(ctx, W, H, px, characters, elapsed) {
   const n = characters.length;
 
-  const nameSz  = Math.round(Math.min(W * 0.05, 26));
-  const vsSz    = Math.round(Math.min(W * 0.042, 22));
-  const skillSz = Math.round(Math.min(W * 0.025, 14));
-  const ballSz  = Math.round(Math.min(W * 0.088, 48));
-  const barH    = 5;
-  const padTop  = 10;
+  // All sizes in CSS-equivalent px, then multiplied by px → native canvas pixels
+  const nameSz  = Math.round(30 * px);
+  const vsSz    = Math.round(22 * px);
+  const skillSz = Math.round(13 * px);
+  const ballSz  = Math.round(52 * px);
+  const barH    = Math.round(5 * px);
+  const gap     = Math.round(8 * px);
+  const padTop  = Math.round(10 * px);
 
   // Banner total height
-  const subH     = ballSz;
-  const bannerH  = padTop + nameSz + 10 + subH + 10 + barH + 14;
+  const subH    = ballSz;
+  const bannerH = padTop + nameSz + gap + subH + gap + barH + Math.round(14 * px);
 
   // Background gradient
-  const grd = ctx.createLinearGradient(0, 0, 0, bannerH + 10);
+  const grd = ctx.createLinearGradient(0, 0, 0, bannerH + Math.round(10 * px));
   grd.addColorStop(0, "rgba(4,4,4,0.80)");
   grd.addColorStop(1, "rgba(4,4,4,0)");
   ctx.fillStyle = grd;
-  ctx.fillRect(0, 0, W, bannerH + 10);
+  ctx.fillRect(0, 0, W, bannerH + Math.round(10 * px));
 
   // Column layout
-  const vsColW    = vsSz * 3.0;
+  const vsColW     = vsSz * 3.0;
   const playerColW = (W - vsColW * (n - 1)) / n;
-  const playerCx  = (i) => playerColW * (i + 0.5) + vsColW * i;
-  const vsCx      = (i) => playerColW * (i + 1) + vsColW * (i + 0.5);
+  const playerCx   = (i) => playerColW * (i + 0.5) + vsColW * i;
+  const vsCx       = (i) => playerColW * (i + 1) + vsColW * (i + 0.5);
 
-  const nameY  = padTop + nameSz / 2;
-  const subCy  = padTop + nameSz + 10 + subH / 2;
-  const barY   = padTop + nameSz + 10 + subH + 10;
+  const nameY = padTop + nameSz / 2;
+  const subCy = padTop + nameSz + gap + subH / 2;
+  const barY  = padTop + nameSz + gap + subH + gap;
 
-  // VS separators (aligned with names)
+  // VS separators
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "rgba(255,255,255,0.5)";
@@ -1899,21 +1902,21 @@ function drawBannerOnCanvas(ctx, W, H, characters, elapsed) {
       intro.ultimateName   ? { label: "大招", name: intro.ultimateName }   : null,
     ].filter(Boolean);
 
-    // Measure skill block width to center ball+skills together
+    // Measure skill text to center the ball+skills block
     ctx.font = `600 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
     const maxSkillW = skills.reduce((max, s) => Math.max(max, ctx.measureText(s.label + " " + s.name).width), 0);
-    const subBlockW = ballSz + 8 + maxSkillW;
-    const ballCx  = cx - subBlockW / 2 + ballSz / 2;
-    const skillX  = cx - subBlockW / 2 + ballSz + 8;
+    const subBlockW = ballSz + gap + maxSkillW;
+    const ballCx = cx - subBlockW / 2 + ballSz / 2;
+    const skillX = cx - subBlockW / 2 + ballSz + gap;
 
     const offCanvas = document.createElement("canvas");
-    offCanvas.width  = Math.round(ballSz * dpr);
-    offCanvas.height = Math.round(ballSz * dpr);
+    offCanvas.width  = ballSz;
+    offCanvas.height = ballSz;
     game.renderBallPreview(offCanvas.getContext("2d"), character, elapsed);
     ctx.drawImage(offCanvas, ballCx - ballSz / 2, subCy - ballSz / 2, ballSz, ballSz);
 
     skills.forEach(({ label, name: skillName }, si) => {
-      const sy = subCy + (si - (skills.length - 1) / 2) * (skillSz + 5);
+      const sy = subCy + (si - (skills.length - 1) / 2) * (skillSz + Math.round(5 * px));
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
       ctx.font = `400 ${skillSz}px "Microsoft YaHei UI", sans-serif`;
@@ -1926,7 +1929,7 @@ function drawBannerOnCanvas(ctx, W, H, characters, elapsed) {
     });
 
     // Essence bar
-    const barW = Math.min(playerColW * 0.72, 140);
+    const barW = Math.min(playerColW * 0.72, Math.round(140 * px));
     const barX = cx - barW / 2;
     const essData = bannerEssenceData.get(character.id);
     const ratio = essData && essData.maxEssence > 0 ? essData.essence / essData.maxEssence : 0;

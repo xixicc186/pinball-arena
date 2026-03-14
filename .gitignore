@@ -1,3 +1,6 @@
 .claude/
 .mcp.json
 .server-*.log
+.edge-cdp/
+.fix_toggles.js
+.skill-archive/

@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="./logo.svg" alt="弹球角斗场" width="600" />
+
 # 弹球角斗场
 ### Pinball Arena
 

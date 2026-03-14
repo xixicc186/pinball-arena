@@ -1,6 +1,21 @@
-# 弹球角斗场
+<div align="center">
 
-纯静态浏览器弹球对战游戏，无构建工具。
+# 弹球角斗场
+### Pinball Arena
+
+**纯静态浏览器弹球对战游戏 · 16 名角色 · 赛事录制 · Agent 全自动运营**
+
+[![Stars](https://img.shields.io/github/stars/xixicc186/pinball-arena?style=flat-square&color=FFD700&labelColor=222)](https://github.com/xixicc186/pinball-arena/stargazers)
+[![Last Commit](https://img.shields.io/github/last-commit/xixicc186/pinball-arena?style=flat-square&color=4CAF50&labelColor=222)](https://github.com/xixicc186/pinball-arena/commits/main)
+[![Issues](https://img.shields.io/github/issues/xixicc186/pinball-arena?style=flat-square&labelColor=222)](https://github.com/xixicc186/pinball-arena/issues)
+[![PRs](https://img.shields.io/github/issues-pr/xixicc186/pinball-arena?style=flat-square&labelColor=222)](https://github.com/xixicc186/pinball-arena/pulls)
+[![Contributors](https://img.shields.io/github/contributors/xixicc186/pinball-arena?style=flat-square&labelColor=222)](https://github.com/xixicc186/pinball-arena/graphs/contributors)
+[![Agent Ready](https://img.shields.io/badge/Agent-Ready-blueviolet?style=flat-square&labelColor=222)](./AGENT.md)
+[![No Build](https://img.shields.io/badge/构建工具-无需-brightgreen?style=flat-square&labelColor=222)]()
+
+</div>
+
+---
 
 ## 启动
 
@@ -298,3 +313,16 @@ renderMyCharBall(ctx, actor, elapsed) {
 | `src/game.js` | 物理、竞技场、战斗、技能 API（约 3700 行） |
 | `src/characters.js` | 角色库与能力定义 |
 | `src/sounds.js` | Web Audio 合成音效 |
+| `src/db.js` | Supabase 数据库接口（可选，见数据库配置章节） |
+
+---
+
+## Agent 自动化
+
+本项目支持 AI Agent 全自动运营：设计角色 → 接入游戏 → 录制赛事视频 → 发布到自媒体平台。
+
+详见 **[AGENT.md](./AGENT.md)**，包含：
+- CDP 浏览器自动化接口（角色选择、触发录制）
+- 角色设计与代码生成规范
+- 视频产物格式与下载拦截方法
+- 抖音 / B站 / YouTube 发布接入点

@@ -4,3 +4,5 @@
 .edge-cdp/
 .fix_toggles.js
 .skill-archive/
+.env
+src/config.js

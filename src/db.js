@@ -1,9 +1,7 @@
 // ─── Supabase 配置 ────────────────────────────────────────────────────────────
-// 请将下方占位符替换为你自己的 Supabase 项目信息。
-// 获取方式：Supabase 控制台 → Project Settings → API
-// 详见 README.md 的「数据库配置」章节。
-const SUPABASE_URL = "YOUR_SUPABASE_URL";       // 例：https://xxxx.supabase.co
-const SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY";  // Project API Keys → anon public
+// 从 src/config.js 读取（该文件已 gitignore，不会上传到 GitHub）。
+// 首次配置：cp src/config.example.js src/config.js，然后填入真实值。
+import { SUPABASE_URL, SUPABASE_KEY } from "./config.js";
 
 const HEADERS = {
   apikey: SUPABASE_KEY,

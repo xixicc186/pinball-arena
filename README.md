@@ -1,11 +1,9 @@
 <div align="center">
 
-<img src="./logo.svg" alt="弹球角斗场" width="600" />
+<img src="./logo.svg" alt="弹球角斗场" width="360" />
 
 # 弹球角斗场
 ### Pinball Arena
-
-**纯静态浏览器弹球对战游戏 · 16 名角色 · 赛事录制 · Agent 全自动运营**
 
 [![Stars](https://img.shields.io/github/stars/xixicc186/pinball-arena?style=flat-square&color=FFD700&labelColor=222)](https://github.com/xixicc186/pinball-arena/stargazers)
 [![Last Commit](https://img.shields.io/github/last-commit/xixicc186/pinball-arena?style=flat-square&color=4CAF50&labelColor=222)](https://github.com/xixicc186/pinball-arena/commits/main)
@@ -14,6 +12,10 @@
 [![Contributors](https://img.shields.io/github/contributors/xixicc186/pinball-arena?style=flat-square&labelColor=222)](https://github.com/xixicc186/pinball-arena/graphs/contributors)
 [![Agent Ready](https://img.shields.io/badge/Agent-Ready-blueviolet?style=flat-square&labelColor=222)](./AGENT.md)
 [![No Build](https://img.shields.io/badge/构建工具-无需-brightgreen?style=flat-square&labelColor=222)]()
+
+纯静态浏览器弹球对战游戏 · 16 名角色 · 赛事录制 · Agent 全自动运营
+
+[在线游玩](https://xixicc186.github.io/pinball-arena/) · [Agent 指南](./AGENT.md) · [查看角色](./src/characters.js)
 
 </div>
 

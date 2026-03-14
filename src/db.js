@@ -1,6 +1,9 @@
-const SUPABASE_URL = "https://ubncpacodhlolhwuwfcb.supabase.co";
-const SUPABASE_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVibmNwYWNvZGhsb2xod3V3ZmNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4NzA0OTYsImV4cCI6MjA4ODQ0NjQ5Nn0.38j2iImWHZPat9Q90qcFJRurJGVV1qOPkMRi-Vl8LtI";
+// ─── Supabase 配置 ────────────────────────────────────────────────────────────
+// 请将下方占位符替换为你自己的 Supabase 项目信息。
+// 获取方式：Supabase 控制台 → Project Settings → API
+// 详见 README.md 的「数据库配置」章节。
+const SUPABASE_URL = "YOUR_SUPABASE_URL";       // 例：https://xxxx.supabase.co
+const SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY";  // Project API Keys → anon public
 
 const HEADERS = {
   apikey: SUPABASE_KEY,

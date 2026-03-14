@@ -14,6 +14,57 @@ python -m http.server 8080
 
 ---
 
+## 数据库配置（可选）
+
+游戏本体**无需数据库即可正常运行**。`src/db.js` 中的 Supabase 集成仅用于在线保存角色调参数据（编辑器面板的数值覆盖）。如不需要此功能，可忽略本节。
+
+### 配置步骤
+
+1. 在 [supabase.com](https://supabase.com) 创建一个免费项目
+2. 进入 **Project Settings → API**，复制：
+   - **Project URL**
+   - **Project API Keys → anon public**
+3. 打开 `src/db.js`，将顶部占位符替换为你的值：
+
+```js
+const SUPABASE_URL = "https://你的项目ID.supabase.co";
+const SUPABASE_KEY = "你的 anon public key";
+```
+
+4. 在 Supabase **SQL Editor** 中执行以下语句建表：
+
+```sql
+-- 角色调参覆盖表
+create table character_tuning (
+  character_id text primary key,
+  overrides    jsonb,
+  updated_at   timestamptz default now()
+);
+
+-- 角色出场介绍文字表
+create table character_intro (
+  character_id       text primary key,
+  name               text,
+  title              text,
+  description        text,
+  basic_attack_name  text,
+  ultimate_name      text,
+  updated_at         timestamptz default now()
+);
+
+-- 开启 Row Level Security（推荐）
+alter table character_tuning enable row level security;
+alter table character_intro  enable row level security;
+
+-- 允许匿名用户读写（根据需要收紧权限）
+create policy "public read"  on character_tuning for select using (true);
+create policy "public write" on character_tuning for all    using (true) with check (true);
+create policy "public read"  on character_intro  for select using (true);
+create policy "public write" on character_intro  for all    using (true) with check (true);
+```
+
+---
+
 ## 接入新角色完整指南
 
 ### 一、必须修改：`src/characters.js`
